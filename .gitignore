@@ -33,7 +33,6 @@ htmlcov/
 Thumbs.db
 
 # Project-specific
-fixtures/
 node_modules/
 examples/output/
 examples/case_studies/output/

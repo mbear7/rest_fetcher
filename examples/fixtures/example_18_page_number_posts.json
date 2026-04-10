@@ -1,0 +1,24 @@
+[
+  {
+    "kind": "raw_response",
+    "format": "json",
+    "status_code": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "request_headers": {},
+    "url": "https://api.example.com/v1/posts?page=1&per_page=50",
+    "body": "{\"results\": [{\"id\": \"p1\"}, {\"id\": \"p2\"}], \"meta\": {\"total_pages\": 2}}"
+  },
+  {
+    "kind": "raw_response",
+    "format": "json",
+    "status_code": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "request_headers": {},
+    "url": "https://api.example.com/v1/posts?page=2&per_page=50",
+    "body": "{\"results\": [{\"id\": \"p3\"}], \"meta\": {\"total_pages\": 2}}"
+  }
+]

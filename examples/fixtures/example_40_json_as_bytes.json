@@ -1,0 +1,13 @@
+[
+  {
+    "kind": "raw_response",
+    "format": "json",
+    "status_code": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "request_headers": {},
+    "url": "https://api.example.com/v1/events?page_size=1",
+    "content_b64": "eyJpdGVtcyI6W3siaWQiOiJldnRfMSIsInR5cGUiOiJkZW1vIn1dLCJtZXRhIjp7Im5leHRfY3Vyc29yIjpudWxsfX0="
+  }
+]

@@ -1,0 +1,25 @@
+[
+  {
+    "kind": "raw_response",
+    "format": "json",
+    "status_code": 200,
+    "headers": {
+      "Content-Type": "application/json",
+      "Link": "<https://api.github.com/orgs/acme/repos?per_page=100&page=2>; rel=\"next\""
+    },
+    "request_headers": {},
+    "url": "https://api.github.com/orgs/acme/repos?per_page=100",
+    "body": "[{\"name\": \"repo-a\"}, {\"name\": \"repo-b\"}]"
+  },
+  {
+    "kind": "raw_response",
+    "format": "json",
+    "status_code": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "request_headers": {},
+    "url": "https://api.github.com/orgs/acme/repos?per_page=100&page=2",
+    "body": "[{\"name\": \"repo-c\"}]"
+  }
+]

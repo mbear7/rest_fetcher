@@ -1,0 +1,13 @@
+[
+  {
+    "kind": "raw_response",
+    "format": "csv",
+    "status_code": 200,
+    "headers": {
+      "Content-Type": "text/csv"
+    },
+    "request_headers": {},
+    "url": "https://example.com/report.csv",
+    "body": "id;name\n1;Alice\n2;Bob\n"
+  }
+]

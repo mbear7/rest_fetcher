@@ -1,0 +1,13 @@
+[
+  {
+    "kind": "raw_response",
+    "format": "json",
+    "status_code": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "request_headers": {},
+    "url": "https://api.example.com/v1/users",
+    "body": "[{\"id\": 1, \"name\": \"Alice\"}, {\"id\": 2, \"name\": \"Bob\"}]"
+  }
+]

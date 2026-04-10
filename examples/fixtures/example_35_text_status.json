@@ -1,0 +1,13 @@
+[
+  {
+    "kind": "raw_response",
+    "format": "text",
+    "status_code": 200,
+    "headers": {
+      "Content-Type": "text/plain; charset=utf-8"
+    },
+    "request_headers": {},
+    "url": "https://example.com/robots.txt",
+    "body": "User-agent: *\nDisallow: /private/\n"
+  }
+]

@@ -1,0 +1,13 @@
+[
+  {
+    "kind": "raw_response",
+    "format": "xml",
+    "status_code": 200,
+    "headers": {
+      "Content-Type": "application/xml"
+    },
+    "request_headers": {},
+    "url": "https://example.com/feed.xml",
+    "body": "<feed><title>Example Feed</title><entry><title>First</title></entry></feed>"
+  }
+]

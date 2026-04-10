@@ -1,0 +1,24 @@
+[
+  {
+    "kind": "raw_response",
+    "format": "json",
+    "status_code": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "request_headers": {},
+    "url": "https://api.example.com/v1/users?offset=0&limit=100",
+    "body": "{\"data\": [{\"id\": 1}, {\"id\": 2}], \"total\": 3}"
+  },
+  {
+    "kind": "raw_response",
+    "format": "json",
+    "status_code": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "request_headers": {},
+    "url": "https://api.example.com/v1/users?offset=2&limit=100",
+    "body": "{\"data\": [{\"id\": 3}], \"total\": 3}"
+  }
+]

@@ -1,0 +1,24 @@
+[
+  {
+    "kind": "raw_response",
+    "format": "json",
+    "status_code": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "request_headers": {},
+    "url": "https://api-metrika.yandex.net/stat/v1/data?offset=0",
+    "body": "{\"data\": [{\"date\": \"2025-01-01\", \"visits\": 10}, {\"date\": \"2025-01-02\", \"visits\": 20}], \"total_rows\": 3}"
+  },
+  {
+    "kind": "raw_response",
+    "format": "json",
+    "status_code": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "request_headers": {},
+    "url": "https://api-metrika.yandex.net/stat/v1/data?offset=2",
+    "body": "{\"data\": [{\"date\": \"2025-01-03\", \"visits\": 30}], \"total_rows\": 3}"
+  }
+]
