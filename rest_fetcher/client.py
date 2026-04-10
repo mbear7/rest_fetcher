@@ -1429,7 +1429,7 @@ class _FetchJob:
             )
 
         def _on_wait(seconds, planned_seconds, cause):
-            run_state.mark_wait('reactive', seconds, cause=cause)
+            run_state.mark_wait('reactive', planned_seconds, cause=cause)
             if cause in {'retry_after', 'min_delay'}:
                 self._emit_event(
                     now_event(
