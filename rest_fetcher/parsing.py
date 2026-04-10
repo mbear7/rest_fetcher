@@ -33,7 +33,10 @@ def _response_bytes_for_recording(response: Any, fallback_encoding: str = 'utf-8
         return bytes(response.content)
     return _response_text_fallback(response).encode(fallback_encoding)
 
-_XML_DECL_RE = re.compile(r"^\s*<\?xml[^>]*encoding\s*=\s*(['\"])([^'\"]+)\1[^>]*\?>", re.IGNORECASE)
+
+_XML_DECL_RE = re.compile(
+    r"^\s*<\?xml[^>]*encoding\s*=\s*(['\"])([^'\"]+)\1[^>]*\?>", re.IGNORECASE
+)
 _CHARSET_RE = re.compile(r'charset\s*=\s*([^;]+)', re.IGNORECASE)
 
 
@@ -70,7 +73,9 @@ def parse_json_response(response: Any) -> Any:
             return json.loads(bytes(response.content).decode('utf-8'))
         return json.loads(_response_text_fallback(response))
     except Exception as e:
-        raise ResponseError(f'invalid JSON response: {e}', raw=getattr(response, 'text', None)) from e
+        raise ResponseError(
+            f'invalid JSON response: {e}', raw=getattr(response, 'text', None)
+        ) from e
 
 
 def parse_text_response(response: Any, encoding: str = 'utf-8') -> str:
@@ -79,30 +84,48 @@ def parse_text_response(response: Any, encoding: str = 'utf-8') -> str:
             return decode_response_text(response, encoding)
         return _response_text_fallback(response)
     except Exception as e:
-        raise ResponseError(f'invalid text response: {e}', raw=getattr(response, 'text', None)) from e
+        raise ResponseError(
+            f'invalid text response: {e}', raw=getattr(response, 'text', None)
+        ) from e
 
 
 def parse_xml_response(response: Any) -> ET.Element:
-    content = bytes(response.content) if _has_content_bytes(response) else _response_text_fallback(response).encode('utf-8')
+    content = (
+        bytes(response.content)
+        if _has_content_bytes(response)
+        else _response_text_fallback(response).encode('utf-8')
+    )
     try:
         return ET.fromstring(content)
     except ET.ParseError as e:
-        raise ResponseError(f'invalid XML response: {e}', raw=getattr(response, 'text', None)) from e
+        raise ResponseError(
+            f'invalid XML response: {e}', raw=getattr(response, 'text', None)
+        ) from e
 
 
 def parse_csv_text(text: str, delimiter: str = ';') -> list[dict[str, str]]:
     return list(csv.DictReader(io.StringIO(text), delimiter=delimiter))
 
 
-def parse_csv_response(response: Any, delimiter: str = ';', encoding: str = 'utf-8') -> list[dict[str, str]]:
+def parse_csv_response(
+    response: Any, delimiter: str = ';', encoding: str = 'utf-8'
+) -> list[dict[str, str]]:
     try:
-        text = decode_response_text(response, encoding) if _has_content_bytes(response) else _response_text_fallback(response)
+        text = (
+            decode_response_text(response, encoding)
+            if _has_content_bytes(response)
+            else _response_text_fallback(response)
+        )
     except Exception as e:
-        raise ResponseError(f'invalid CSV response: {e}', raw=getattr(response, 'text', None)) from e
+        raise ResponseError(
+            f'invalid CSV response: {e}', raw=getattr(response, 'text', None)
+        ) from e
     return parse_csv_text(text, delimiter=delimiter)
 
 
-def default_parse_response(response: Any, response_format: str = 'auto', csv_delimiter: str = ';', encoding: str = 'utf-8') -> Any:
+def default_parse_response(
+    response: Any, response_format: str = 'auto', csv_delimiter: str = ';', encoding: str = 'utf-8'
+) -> Any:
     content = getattr(response, 'content', None)
     if isinstance(content, (bytes, bytearray)):
         if len(content) == 0:
@@ -170,16 +193,22 @@ def serialize_response_for_playback(
         'url': getattr(response, 'url', '') or request_kwargs.get('url') or '',
     }
     if effective in ('bytes',) or record_as_bytes:
-        env['content_b64'] = base64.b64encode(_response_bytes_for_recording(response, fallback_encoding=encoding or 'utf-8')).decode('ascii')
+        env['content_b64'] = base64.b64encode(
+            _response_bytes_for_recording(response, fallback_encoding=encoding or 'utf-8')
+        ).decode('ascii')
         if effective in ('csv', 'text', 'xml') and encoding:
             env['encoding'] = encoding
         return env
     try:
         body = _decode_for_recording(response, effective, encoding)
     except UnicodeDecodeError as e:
-        raise FixtureFormatError(f'failed to decode {effective} payload for textual fixture storage: {e}') from e
+        raise FixtureFormatError(
+            f'failed to decode {effective} payload for textual fixture storage: {e}'
+        ) from e
     except LookupError as e:
-        raise FixtureFormatError(f'invalid encoding {encoding!r} for textual fixture storage') from e
+        raise FixtureFormatError(
+            f'invalid encoding {encoding!r} for textual fixture storage'
+        ) from e
     env['body'] = body
     if effective in ('csv', 'text') and encoding:
         env['encoding'] = encoding

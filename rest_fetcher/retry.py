@@ -13,8 +13,8 @@ logger = logging.getLogger('rest_fetcher.retry')
 _DEFAULT_MAX_ATTEMPTS = 3
 _DEFAULT_BACKOFF = 'exponential'
 _DEFAULT_ON_CODES = [429, 500, 502, 503, 504]
-_DEFAULT_BASE_DELAY = 1.0    # seconds, base for backoff calculation
-_DEFAULT_MAX_DELAY = 120.0   # seconds, cap for backoff to avoid absurd waits
+_DEFAULT_BASE_DELAY = 1.0  # seconds, base for backoff calculation
+_DEFAULT_MAX_DELAY = 120.0  # seconds, cap for backoff to avoid absurd waits
 _DEFAULT_JITTER = False
 
 
@@ -30,14 +30,14 @@ def _apply_jitter(delay, jitter):
 
 
 def _backoff_delay(strategy, attempt, base_delay, max_delay, jitter=False):
-    '''
+    """
     calculates how long to wait before attempt number `attempt` (1-indexed).
     attempt 1 means first retry, i.e. second total request.
 
         exponential: 1s, 2s, 4s, 8s, ... capped at max_delay
         linear:      1s, 2s, 3s, 4s, ... capped at max_delay
         callable:    user function(attempt) -> seconds
-    '''
+    """
     if callable(strategy):
         delay = strategy(attempt)
     elif strategy == 'exponential':
@@ -51,12 +51,12 @@ def _backoff_delay(strategy, attempt, base_delay, max_delay, jitter=False):
 
 
 def _parse_retry_after(headers):
-    '''
+    """
     parses Retry-After header, which can be either:
     - a number of seconds: "Retry-After: 30"
     - an http date: "Retry-After: Wed, 21 Oct 2025 07:28:00 GMT"
     returns float seconds or None if header is absent or unparseable.
-    '''
+    """
     value = headers.get('Retry-After') or headers.get('retry-after')
     if value is None:
         return None
@@ -73,6 +73,7 @@ def _parse_retry_after(headers):
 
     # try http date format
     from email.utils import parsedate_to_datetime
+
     try:
         retry_time = parsedate_to_datetime(value).timestamp()
         wait = retry_time - time.time()
@@ -83,7 +84,7 @@ def _parse_retry_after(headers):
 
 
 class RetryHandler:
-    '''
+    """
     handles retry logic, backoff delays, and rate-limit / Retry-After header respect.
 
     constructed from the retry + rate_limit sub-dicts of the client schema:
@@ -100,7 +101,7 @@ class RetryHandler:
             'respect_retry_after': True,
             'min_delay': 0.5,           # minimum seconds between any two requests
         }
-    '''
+    """
 
     def __init__(self, retry_config=None, rate_limit_config=None):
         retry = retry_config or {}
@@ -123,7 +124,7 @@ class RetryHandler:
         self._last_request_tick = 0.0
 
     def _enforce_min_delay(self):
-        'ensures minimum gap between requests regardless of retry status'
+        "ensures minimum gap between requests regardless of retry status"
         if self._min_delay <= 0:
             return
         elapsed = time.monotonic() - self._last_request_tick
@@ -133,7 +134,7 @@ class RetryHandler:
             time.sleep(wait)
 
     def _resolve_retry_delay(self, response_headers, status_code, attempt):
-        'decides how long to wait after a rate-limit or server error response'
+        "decides how long to wait after a rate-limit or server error response"
         retry_after = None
 
         if self._respect_retry_after:
@@ -144,14 +145,16 @@ class RetryHandler:
                 raise RateLimitError(
                     f'Retry-After {retry_after}s exceeds max_retry_after {self._max_retry_after}s',
                     retry_after=retry_after,
-                    status_code=status_code
+                    status_code=status_code,
                 )
             return retry_after
 
-        return _backoff_delay(self._backoff, attempt, self._base_delay, self._max_delay, self._jitter)
+        return _backoff_delay(
+            self._backoff, attempt, self._base_delay, self._max_delay, self._jitter
+        )
 
     def _resolve_terminal_reactive_delay(self, response_headers, status_code):
-        'decides terminal reactive wait when retries are suppressed or exhausted'
+        "decides terminal reactive wait when retries are suppressed or exhausted"
         retry_after = None
         if self._respect_retry_after:
             retry_after = _parse_retry_after(response_headers)
@@ -160,7 +163,7 @@ class RetryHandler:
                 raise RateLimitError(
                     f'Retry-After {retry_after}s exceeds max_retry_after {self._max_retry_after}s',
                     retry_after=retry_after,
-                    status_code=status_code
+                    status_code=status_code,
                 )
             return retry_after, 'retry_after'
         if self._min_delay > 0:
@@ -169,19 +172,14 @@ class RetryHandler:
 
     def _wait_for_retry_delay(self, delay, status_code, attempt, *, cause, ctx=None, on_wait=None):
         if cause == 'retry_after':
-            logger.info(
-                'rate limited (status %d), retry_after: sleeping %.1fs',
-                status_code, delay
-            )
+            logger.info('rate limited (status %d), retry_after: sleeping %.1fs', status_code, delay)
         elif cause == 'min_delay':
             logger.info(
-                'status %d on attempt %d, min_delay: sleeping %.1fs',
-                status_code, attempt, delay
+                'status %d on attempt %d, min_delay: sleeping %.1fs', status_code, attempt, delay
             )
         else:
             logger.info(
-                'status %d on attempt %d, backoff: sleeping %.1fs',
-                status_code, attempt, delay
+                'status %d on attempt %d, backoff: sleeping %.1fs', status_code, attempt, delay
             )
         start_wait = time.monotonic()
         time.sleep(delay)
@@ -192,7 +190,7 @@ class RetryHandler:
             ctx.check_deadline()
 
     def execute(self, request_fn, ctx=None, on_retry=None, on_wait=None):
-        '''
+        """
         executes request_fn() with retry logic applied.
         request_fn must be a zero-argument callable that:
             - returns a requests.Response on success
@@ -209,7 +207,7 @@ class RetryHandler:
 
         request context (endpoint, method, url) is NOT attached here — the caller
         (_FetchJob) is responsible for catching RequestError and enriching it.
-        '''
+        """
         last_exc = None
 
         for attempt in range(1, self._max_attempts + 1):
@@ -233,24 +231,36 @@ class RetryHandler:
                 # network-level failure: connection error, timeout, DNS, SSL, etc.
                 # non-requests exceptions (AttributeError, KeyError, etc.) are programming
                 # errors — let them bubble up immediately rather than retrying
-                last_exc = RequestError(
-                    f'network error: {e}',
-                    cause=e
-                )
+                last_exc = RequestError(f'network error: {e}', cause=e)
                 if attempt == self._max_attempts:
                     break
-                delay = _backoff_delay(self._backoff, attempt, self._base_delay, self._max_delay, self._jitter)
+                delay = _backoff_delay(
+                    self._backoff, attempt, self._base_delay, self._max_delay, self._jitter
+                )
                 if on_retry is not None:
                     try:
-                        on_retry({'reason': 'network_error', 'attempt': attempt + 1, 'current_attempt': attempt, 'bytes_received': 0, 'planned_ms': delay * 1000.0})
+                        on_retry(
+                            {
+                                'reason': 'network_error',
+                                'attempt': attempt + 1,
+                                'current_attempt': attempt,
+                                'bytes_received': 0,
+                                'planned_ms': delay * 1000.0,
+                            }
+                        )
                     except Exception:
                         # observability hook must not break retry logic
                         logger.warning('on_retry hook raised; suppressing exception', exc_info=True)
                 logger.warning(
                     'network error on attempt %d/%d: %s — retrying in %.1fs',
-                    attempt, self._max_attempts, e, delay
+                    attempt,
+                    self._max_attempts,
+                    e,
+                    delay,
                 )
-                self._wait_for_retry_delay(delay, 0, attempt, cause='backoff', ctx=ctx, on_wait=on_wait)
+                self._wait_for_retry_delay(
+                    delay, 0, attempt, cause='backoff', ctx=ctx, on_wait=on_wait
+                )
                 continue
 
             if response.status_code not in self._on_codes:
@@ -260,43 +270,63 @@ class RetryHandler:
             # retryable status code
             if attempt == self._max_attempts:
                 if self._reactive_wait_on_terminal:
-                    delay, cause = self._resolve_terminal_reactive_delay(response.headers, response.status_code)
+                    delay, cause = self._resolve_terminal_reactive_delay(
+                        response.headers, response.status_code
+                    )
                     if delay is not None and cause is not None:
-                        self._wait_for_retry_delay(delay, response.status_code, attempt, cause=cause, ctx=ctx, on_wait=on_wait)
+                        self._wait_for_retry_delay(
+                            delay,
+                            response.status_code,
+                            attempt,
+                            cause=cause,
+                            ctx=ctx,
+                            on_wait=on_wait,
+                        )
                 try:
                     body = response.json()
-                    api_msg = (body.get('error', {}).get('message')
-                               or body.get('message')
-                               or body.get('detail')
-                               or '')
+                    api_msg = (
+                        body.get('error', {}).get('message')
+                        or body.get('message')
+                        or body.get('detail')
+                        or ''
+                    )
                 except Exception:  # deliberately broad: don't let JSON decode failure mask the real HTTP error we're about to raise
                     api_msg = response.text[:300] if response.text else ''
-                message = (f'status {response.status_code} after '
-                           f'{self._max_attempts} attempts')
+                message = f'status {response.status_code} after {self._max_attempts} attempts'
                 if api_msg:
                     message += f' — {api_msg}'
                 last_exc = RequestError(
-                    message,
-                    status_code=response.status_code,
-                    response=response
+                    message, status_code=response.status_code, response=response
                 )
                 break
 
-            retry_after = _parse_retry_after(response.headers) if self._respect_retry_after else None
+            retry_after = (
+                _parse_retry_after(response.headers) if self._respect_retry_after else None
+            )
             delay = self._resolve_retry_delay(response.headers, response.status_code, attempt)
             cause = 'retry_after' if retry_after is not None else 'backoff'
             if on_retry is not None:
                 try:
-                    on_retry({'reason': f'status_{response.status_code}', 'attempt': attempt + 1, 'current_attempt': attempt, 'bytes_received': len(response.content) if hasattr(response, 'content') else 0, 'planned_ms': delay * 1000.0})
+                    on_retry(
+                        {
+                            'reason': f'status_{response.status_code}',
+                            'attempt': attempt + 1,
+                            'current_attempt': attempt,
+                            'bytes_received': len(response.content)
+                            if hasattr(response, 'content')
+                            else 0,
+                            'planned_ms': delay * 1000.0,
+                        }
+                    )
                 except Exception:
                     logger.warning('on_retry hook raised; suppressing exception', exc_info=True)
-            self._wait_for_retry_delay(delay, response.status_code, attempt, cause=cause, ctx=ctx, on_wait=on_wait)
+            self._wait_for_retry_delay(
+                delay, response.status_code, attempt, cause=cause, ctx=ctx, on_wait=on_wait
+            )
 
-        raise last_exc or RequestError(
-            f'all {self._max_attempts} attempts failed'
-        )
+        raise last_exc or RequestError(f'all {self._max_attempts} attempts failed')
 
 
 def build_retry_handler(retry_config=None, rate_limit_config=None):
-    'factory: builds a RetryHandler from schema sub-dicts'
+    "factory: builds a RetryHandler from schema sub-dicts"
     return RetryHandler(retry_config, rate_limit_config)

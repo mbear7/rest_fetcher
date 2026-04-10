@@ -51,7 +51,7 @@ def outcome(parsed, request_kwargs=None, headers=None):
 def make_response(status=200, body=None, headers=None):
     r = MagicMock()
     r.status_code = status
-    r.ok = (status < 400)
+    r.ok = status < 400
     r.url = 'https://api.example.com/v1/test'
     r.headers = headers or {}
     r.json.return_value = body or {}
@@ -62,16 +62,13 @@ def make_response(status=200, body=None, headers=None):
 def simple_schema(**endpoint_overrides):
     endpoint = {'method': 'GET', 'path': '/test'}
     endpoint.update(endpoint_overrides)
-    return {
-        'base_url': 'https://api.example.com/v1',
-        'endpoints': {'test': endpoint}
-    }
+    return {'base_url': 'https://api.example.com/v1', 'endpoints': {'test': endpoint}}
 
 
 class TestSafeInt(unittest.TestCase):
-
     def setUp(self):
         from rest_fetcher.pagination import _safe_int
+
         self.safe_int = _safe_int
 
     def test_numeric_string(self):
@@ -98,10 +95,11 @@ class TestSafeInt(unittest.TestCase):
             except Exception as e:
                 self.fail(f'_safe_int raised {e!r} for input {bad!r}')
 
-class TestSafeItems(unittest.TestCase):
 
+class TestSafeItems(unittest.TestCase):
     def setUp(self):
         from rest_fetcher.pagination import _safe_items
+
         self.safe_items = _safe_items
 
     def test_list_returned_unchanged(self):
@@ -123,11 +121,13 @@ class TestSafeItems(unittest.TestCase):
     def test_empty_list_returned_unchanged(self):
         self.assertEqual(self.safe_items([]), [])
 
+
 class TestResolvePath(unittest.TestCase):
-    'module-level _resolve_path used by all strategies for dotted key extraction'
+    "module-level _resolve_path used by all strategies for dotted key extraction"
 
     def setUp(self):
         from rest_fetcher.pagination import _resolve_path
+
         self.resolve = _resolve_path
 
     def test_flat_key(self):
@@ -151,8 +151,9 @@ class TestResolvePath(unittest.TestCase):
     def test_empty_resp_returns_none(self):
         self.assertIsNone(self.resolve({}, 'meta.total'))
 
+
 class TestMalformedTotalsDoNotRaise(unittest.TestCase):
-    'integration-level: malformed total fields must never propagate exceptions'
+    "integration-level: malformed total fields must never propagate exceptions"
 
     def test_offset_malformed_total_does_not_raise(self):
         strategy = offset_pagination(limit=10, data_path='items', total_path='total')
@@ -171,8 +172,9 @@ class TestMalformedTotalsDoNotRaise(unittest.TestCase):
             self.fail(f'raised {type(e).__name__}: {e}')
 
     def test_page_number_malformed_total_pages_does_not_raise(self):
-        strategy = page_number_pagination(page_size=10, data_path='results',
-                                          total_pages_path='pages')
+        strategy = page_number_pagination(
+            page_size=10, data_path='results', total_pages_path='pages'
+        )
         state = {'page': 1, 'page_size': 10}
         try:
             strategy['next_request']({'results': list(range(10)), 'pages': 'unknown'}, state)
@@ -180,17 +182,19 @@ class TestMalformedTotalsDoNotRaise(unittest.TestCase):
             self.fail(f'raised {type(e).__name__}: {e}')
 
     def test_page_number_dotted_malformed_does_not_raise(self):
-        strategy = page_number_pagination(page_size=10, data_path='results',
-                                          total_pages_path='meta.pages')
+        strategy = page_number_pagination(
+            page_size=10, data_path='results', total_pages_path='meta.pages'
+        )
         state = {'page': 1, 'page_size': 10}
         try:
-            strategy['next_request']({'results': list(range(10)), 'meta': {'pages': '25 pages'}}, state
+            strategy['next_request'](
+                {'results': list(range(10)), 'meta': {'pages': '25 pages'}}, state
             )
         except Exception as e:
             self.fail(f'raised {type(e).__name__}: {e}')
 
-class TestPaginationStrategies(unittest.TestCase):
 
+class TestPaginationStrategies(unittest.TestCase):
     def test_offset_stops_when_items_less_than_limit(self):
         strategy = offset_pagination(limit=10, data_path='items')
         # simulate last page: 5 items returned, limit is 10
@@ -213,7 +217,7 @@ class TestPaginationStrategies(unittest.TestCase):
         self.assertIsNone(result)
 
     def test_offset_no_double_advance_multipage(self):
-        'regression: on_response must not advance offset — only next_request should'
+        "regression: on_response must not advance offset — only next_request should"
         strategy = offset_pagination(limit=3, data_path='items')
         # page 1: items 0,1,2 — next request should go to offset=3
         resp1 = {'items': [0, 1, 2]}
@@ -229,7 +233,9 @@ class TestPaginationStrategies(unittest.TestCase):
         resp2 = {'items': [3, 4, 5]}
         result2 = strategy['next_request'](resp2, state2)
         self.assertIsNotNone(result2)
-        self.assertEqual(result2['params']['offset'], 6, 'double-advance bug: offset jumped to 9 instead of 6')
+        self.assertEqual(
+            result2['params']['offset'], 6, 'double-advance bug: offset jumped to 9 instead of 6'
+        )
 
     def test_offset_with_total_key_stops_at_total(self):
         strategy = offset_pagination(limit=10, data_path='items', total_path='total')
@@ -266,17 +272,19 @@ class TestPaginationStrategies(unittest.TestCase):
     def test_link_header_parses_next(self):
         strategy = link_header_pagination('items')
         resp = {'items': [1, 2, 3]}
-        state = {'_response_headers': {
-            'Link': '<https://api.example.com/users?page=2>; rel="next", <https://api.example.com/users?page=5>; rel="last"'
-        }}
+        state = {
+            '_response_headers': {
+                'Link': '<https://api.example.com/users?page=2>; rel="next", <https://api.example.com/users?page=5>; rel="last"'
+            }
+        }
         result = strategy['next_request'](resp, state)
         self.assertEqual(result['url'], 'https://api.example.com/users?page=2')
 
     def test_link_header_stops_when_no_next(self):
         strategy = link_header_pagination()
-        state = {'_response_headers': {
-            'Link': '<https://api.example.com/users?page=5>; rel="last"'
-        }}
+        state = {
+            '_response_headers': {'Link': '<https://api.example.com/users?page=5>; rel="last"'}
+        }
         result = strategy['next_request']({}, state)
         self.assertIsNone(result)
 
@@ -293,7 +301,7 @@ class TestPaginationStrategies(unittest.TestCase):
         self.assertIsNone(result)
 
     def test_page_number_no_double_advance_multipage(self):
-        'regression: on_response must not advance page — only next_request should'
+        "regression: on_response must not advance page — only next_request should"
         strategy = page_number_pagination(page_size=3, data_path='results')
         # page 1: next_request should advance to page 2
         resp1 = {'results': [1, 2, 3]}
@@ -308,7 +316,9 @@ class TestPaginationStrategies(unittest.TestCase):
         resp2 = {'results': [4, 5, 6]}
         result2 = strategy['next_request'](resp2, state2)
         self.assertIsNotNone(result2)
-        self.assertEqual(result2['params']['page'], 3, 'double-advance bug: jumped to page 4 instead of 3')
+        self.assertEqual(
+            result2['params']['page'], 3, 'double-advance bug: jumped to page 4 instead of 3'
+        )
 
     def test_page_number_stops_on_short_page(self):
         strategy = page_number_pagination(page_size=10, data_path='results')
@@ -317,79 +327,111 @@ class TestPaginationStrategies(unittest.TestCase):
         result = strategy['next_request'](resp, state)
         self.assertIsNone(result)
 
-class TestParamsModeReplace(unittest.TestCase):
 
+class TestParamsModeReplace(unittest.TestCase):
     def _two_page_run(self, next_req_fn, initial_params=None):
         requests_seen = []
         call_count = [0]
+
         def mock_fetch(request, ctx=None, *, run_state):
-            requests_seen.append({k: dict(v) if isinstance(v, dict) else v
-                                  for k, v in request.items()})
+            requests_seen.append(
+                {k: dict(v) if isinstance(v, dict) else v for k, v in request.items()}
+            )
             call_count[0] += 1
             return outcome(({'data': [1, 2, 3]} if call_count[0] == 1 else {'data': [4]}), request)
+
         from rest_fetcher.pagination import CycleRunner
-        runner = CycleRunner({
-            'next_request': next_req_fn,
-            'on_response': lambda resp, state: resp.get('data', []),
-        })
-        init = {'method': 'GET', 'url': 'https://example.com',
-                'params': initial_params or {'page': 1, 'filter': 'active', 'limit': 10},
-                'headers': {'X-Foo': 'bar'}}
+
+        runner = CycleRunner(
+            {
+                'next_request': next_req_fn,
+                'on_response': lambda resp, state: resp.get('data', []),
+            }
+        )
+        init = {
+            'method': 'GET',
+            'url': 'https://example.com',
+            'params': initial_params or {'page': 1, 'filter': 'active', 'limit': 10},
+            'headers': {'X-Foo': 'bar'},
+        }
         list(runner.run(mock_fetch, init))
         return requests_seen
 
     def test_merge_mode_preserves_sticky_keys(self):
         def next_req(resp, state):
             return None if len(resp.get('data', [])) < 3 else {'params': {'page': 2}}
+
         seen = self._two_page_run(next_req)
         self.assertEqual(seen[1]['params']['filter'], 'active')
         self.assertEqual(seen[1]['params']['page'], 2)
 
     def test_replace_clears_sticky_keys(self):
         def next_req(resp, state):
-            return None if len(resp.get('data', [])) < 3 else                 {'params': {'page': 2}, 'params_mode': 'replace'}
+            return (
+                None
+                if len(resp.get('data', [])) < 3
+                else {'params': {'page': 2}, 'params_mode': 'replace'}
+            )
+
         seen = self._two_page_run(next_req)
         self.assertNotIn('filter', seen[1]['params'])
         self.assertEqual(seen[1]['params']['page'], 2)
 
     def test_replace_with_empty_params_clears_all(self):
         def next_req(resp, state):
-            return None if len(resp.get('data', [])) < 3 else                 {'params': {}, 'params_mode': 'replace'}
+            return (
+                None if len(resp.get('data', [])) < 3 else {'params': {}, 'params_mode': 'replace'}
+            )
+
         seen = self._two_page_run(next_req)
         self.assertEqual(seen[1]['params'], {})
 
     def test_replace_without_params_key_clears_all(self):
-        'params_mode=replace with no params key should treat it as {} and clear all'
+        "params_mode=replace with no params key should treat it as {} and clear all"
+
         def next_req(resp, state):
-            return None if len(resp.get('data', [])) < 3 else                 {'params_mode': 'replace'}          # no params key at all
+            return (
+                None if len(resp.get('data', [])) < 3 else {'params_mode': 'replace'}
+            )  # no params key at all
+
         seen = self._two_page_run(next_req)
         self.assertEqual(seen[1]['params'], {})
 
     def test_replace_preserves_non_params_keys(self):
         def next_req(resp, state):
-            return None if len(resp.get('data', [])) < 3 else                 {'params': {'page': 2}, 'params_mode': 'replace'}
+            return (
+                None
+                if len(resp.get('data', [])) < 3
+                else {'params': {'page': 2}, 'params_mode': 'replace'}
+            )
+
         seen = self._two_page_run(next_req)
         self.assertEqual(seen[1]['headers']['X-Foo'], 'bar')
 
     def test_replace_when_initial_request_has_no_params_key(self):
-        'replace mode on a request that never had a params key — must not raise'
+        "replace mode on a request that never had a params key — must not raise"
         from rest_fetcher.pagination import CycleRunner
+
         requests_seen = []
         call_count = [0]
 
         def mock_fetch(request, ctx=None, *, run_state):
-            requests_seen.append({k: dict(v) if isinstance(v, dict) else v
-                                  for k, v in request.items()})
+            requests_seen.append(
+                {k: dict(v) if isinstance(v, dict) else v for k, v in request.items()}
+            )
             call_count[0] += 1
             return outcome(({'data': [1, 2, 3]} if call_count[0] == 1 else {'data': [4]}), request)
 
-        runner = CycleRunner({
-            'next_request': lambda resp, state: (
-                None if len(resp.get('data', [])) < 3
-                else {'params': {'page': 2}, 'params_mode': 'replace'}
-            ),
-            'on_response': lambda resp, state: resp.get('data', []),
-        })
+        runner = CycleRunner(
+            {
+                'next_request': lambda resp, state: (
+                    None
+                    if len(resp.get('data', [])) < 3
+                    else {'params': {'page': 2}, 'params_mode': 'replace'}
+                ),
+                'on_response': lambda resp, state: resp.get('data', []),
+            }
+        )
         # initial request deliberately has no 'params' key
         initial = {'method': 'GET', 'url': 'https://example.com', 'headers': {'X-Foo': 'bar'}}
         try:
@@ -400,18 +442,29 @@ class TestParamsModeReplace(unittest.TestCase):
 
     def test_params_mode_key_not_leaked_into_request(self):
         def next_req(resp, state):
-            return None if len(resp.get('data', [])) < 3 else                 {'params': {'page': 2}, 'params_mode': 'replace'}
+            return (
+                None
+                if len(resp.get('data', [])) < 3
+                else {'params': {'page': 2}, 'params_mode': 'replace'}
+            )
+
         seen = self._two_page_run(next_req)
         self.assertNotIn('params_mode', seen[1])
 
-
     def test_builtin_cursor_pagination_replace_mode_clears_sticky_params(self):
-        strategy = cursor_pagination(cursor_param='cursor', next_cursor_path='next_cursor', data_path='data', params_mode='replace')
+        strategy = cursor_pagination(
+            cursor_param='cursor',
+            next_cursor_path='next_cursor',
+            data_path='data',
+            params_mode='replace',
+        )
         requests_seen = []
         call_count = [0]
 
         def mock_fetch(request, ctx=None, *, run_state):
-            requests_seen.append({k: dict(v) if isinstance(v, dict) else v for k, v in request.items()})
+            requests_seen.append(
+                {k: dict(v) if isinstance(v, dict) else v for k, v in request.items()}
+            )
             call_count[0] += 1
             if call_count[0] == 1:
                 return outcome({'data': [1, 2, 3], 'next_cursor': 'c2'}, request)
@@ -429,74 +482,105 @@ class TestParamsModeReplace(unittest.TestCase):
 
     def test_builtin_offset_pagination_replace_mode_emits_replace(self):
         strategy = offset_pagination(limit=3, data_path='data', params_mode='replace')
-        result = strategy['next_request']({'data': [1, 2, 3]}, {'_request': {'params': {'offset': 0, 'limit': 3, 'filter': 'active'}}})
+        result = strategy['next_request'](
+            {'data': [1, 2, 3]},
+            {'_request': {'params': {'offset': 0, 'limit': 3, 'filter': 'active'}}},
+        )
         self.assertEqual(result['params_mode'], 'replace')
 
     def test_builtin_page_number_pagination_replace_mode_emits_replace(self):
         strategy = page_number_pagination(page_size=3, data_path='results', params_mode='replace')
-        result = strategy['next_request']({'results': [1, 2, 3]}, {'_request': {'params': {'page': 1, 'page_size': 3, 'filter': 'active'}}})
+        result = strategy['next_request'](
+            {'results': [1, 2, 3]},
+            {'_request': {'params': {'page': 1, 'page_size': 3, 'filter': 'active'}}},
+        )
         self.assertEqual(result['params_mode'], 'replace')
 
     def test_builtin_params_mode_rejects_invalid_value(self):
         with self.assertRaises(ValueError):
-            cursor_pagination(cursor_param='cursor', next_cursor_path='next_cursor', params_mode='invalid')
+            cursor_pagination(
+                cursor_param='cursor', next_cursor_path='next_cursor', params_mode='invalid'
+            )
 
     def test_runtime_invalid_params_mode_raises_callback_error(self):
         def next_req(resp, state):
-            return None if len(resp.get('data', [])) < 3 else {'params': {'page': 2}, 'params_mode': 'Replace'}
+            return (
+                None
+                if len(resp.get('data', [])) < 3
+                else {'params': {'page': 2}, 'params_mode': 'Replace'}
+            )
+
         with self.assertRaises(CallbackError) as ctx:
             self._two_page_run(next_req)
         self.assertIn('params_mode', str(ctx.exception))
 
-class TestStrategyRespectsCallTimeOverrides(unittest.TestCase):
 
+class TestStrategyRespectsCallTimeOverrides(unittest.TestCase):
     def test_offset_strategy_respects_call_time_limit(self):
-        'if first request used limit=200, page 2+ should also use 200, not factory 100'
+        "if first request used limit=200, page 2+ should also use 200, not factory 100"
         from rest_fetcher.pagination import CycleRunner
+
         requests_seen = []
         call_count = [0]
 
         def mock_fetch(request, ctx=None, *, run_state):
-            requests_seen.append({k: dict(v) if isinstance(v, dict) else v
-                                  for k, v in request.items()})
+            requests_seen.append(
+                {k: dict(v) if isinstance(v, dict) else v for k, v in request.items()}
+            )
             call_count[0] += 1
             # return 200 items on page 1 (full page at call-time limit)
-            return outcome(({'items': list(range(200))} if call_count[0] == 1
-                    else {'items': []}), request)
+            return outcome(
+                ({'items': list(range(200))} if call_count[0] == 1 else {'items': []}), request
+            )
 
         strategy = offset_pagination(limit=100, data_path='items')
         runner = CycleRunner(strategy)
         # first request has call-time override: limit=200
-        initial = {'method': 'GET', 'url': 'https://example.com',
-                   'params': {'offset': 0, 'limit': 200}}
+        initial = {
+            'method': 'GET',
+            'url': 'https://example.com',
+            'params': {'offset': 0, 'limit': 200},
+        }
         list(runner.run(mock_fetch, initial))
         # page 2 request must carry limit=200, not factory default 100
-        self.assertEqual(requests_seen[1]['params']['limit'], 200,
-            'strategy flipped back to factory limit=100 instead of call-time limit=200')
+        self.assertEqual(
+            requests_seen[1]['params']['limit'],
+            200,
+            'strategy flipped back to factory limit=100 instead of call-time limit=200',
+        )
 
     def test_page_number_strategy_respects_call_time_page_size(self):
-        'if first request used page_size=50, page 2+ should also use 50, not factory 20'
+        "if first request used page_size=50, page 2+ should also use 50, not factory 20"
         from rest_fetcher.pagination import CycleRunner
+
         requests_seen = []
         call_count = [0]
 
         def mock_fetch(request, ctx=None, *, run_state):
-            requests_seen.append({k: dict(v) if isinstance(v, dict) else v
-                                  for k, v in request.items()})
+            requests_seen.append(
+                {k: dict(v) if isinstance(v, dict) else v for k, v in request.items()}
+            )
             call_count[0] += 1
-            return outcome(({'results': list(range(50))} if call_count[0] == 1
-                    else {'results': []}), request)
+            return outcome(
+                ({'results': list(range(50))} if call_count[0] == 1 else {'results': []}), request
+            )
 
         strategy = page_number_pagination(page_size=20, data_path='results')
         runner = CycleRunner(strategy)
-        initial = {'method': 'GET', 'url': 'https://example.com',
-                   'params': {'page': 1, 'page_size': 50}}
+        initial = {
+            'method': 'GET',
+            'url': 'https://example.com',
+            'params': {'page': 1, 'page_size': 50},
+        }
         list(runner.run(mock_fetch, initial))
-        self.assertEqual(requests_seen[1]['params']['page_size'], 50,
-            'strategy flipped back to factory page_size=20 instead of call-time page_size=50')
+        self.assertEqual(
+            requests_seen[1]['params']['page_size'],
+            50,
+            'strategy flipped back to factory page_size=20 instead of call-time page_size=50',
+        )
 
     def test_offset_short_page_check_uses_effective_limit(self):
-        'stop condition uses effective_limit from state, not factory constant'
+        "stop condition uses effective_limit from state, not factory constant"
         strategy = offset_pagination(limit=100, data_path='items')
         # state reflects call-time override of limit=50
         state = {'offset': 0, 'limit': 50}
@@ -508,8 +592,8 @@ class TestStrategyRespectsCallTimeOverrides(unittest.TestCase):
         result2 = strategy['next_request']({'items': list(range(49))}, state2)
         self.assertIsNone(result2, 'should stop: 49 items < effective limit 50')
 
-class TestOffsetPaginationDottedTotal(unittest.TestCase):
 
+class TestOffsetPaginationDottedTotal(unittest.TestCase):
     def test_flat_total_key(self):
         strategy = offset_pagination(limit=10, data_path='items', total_path='total')
         state = {'offset': 0, 'limit': 10}
@@ -524,19 +608,17 @@ class TestOffsetPaginationDottedTotal(unittest.TestCase):
     def test_dotted_total_key(self):
         strategy = offset_pagination(limit=10, data_path='items', total_path='meta.total')
         state = {'offset': 0, 'limit': 10}
-        result = strategy['next_request']({'items': list(range(10)), 'meta': {'total': 25}}, state
-        )
+        result = strategy['next_request']({'items': list(range(10)), 'meta': {'total': 25}}, state)
         self.assertIsNotNone(result)
 
     def test_dotted_total_key_stops_at_total(self):
         strategy = offset_pagination(limit=10, data_path='items', total_path='meta.total')
         state = {'offset': 10, 'limit': 10}
-        result = strategy['next_request']({'items': list(range(5)), 'meta': {'total': 15}}, state
-        )
+        result = strategy['next_request']({'items': list(range(5)), 'meta': {'total': 15}}, state)
         self.assertIsNone(result, 'next_offset=15 >= total=15 should stop')
 
     def test_missing_total_path_stops_with_warning(self):
-        'if total_key path resolves to None, stop immediately with a warning'
+        "if total_key path resolves to None, stop immediately with a warning"
         strategy = offset_pagination(limit=10, data_path='items', total_path='meta.total')
         state = {'offset': 0, 'limit': 10}
         with self.assertLogs('rest_fetcher.pagination', level='WARNING') as cm:
@@ -545,14 +627,14 @@ class TestOffsetPaginationDottedTotal(unittest.TestCase):
         self.assertTrue(any('invalid total' in m.lower() for m in cm.output))
 
     def test_string_total_coerced(self):
-        'total value may arrive as string from some APIs'
+        "total value may arrive as string from some APIs"
         strategy = offset_pagination(limit=10, data_path='items', total_path='total')
         state = {'offset': 0, 'limit': 10}
         result = strategy['next_request']({'items': list(range(10)), 'total': '25'}, state)
         self.assertIsNotNone(result)
 
     def test_malformed_total_stops_with_warning_full_page(self):
-        'non-numeric total: stop immediately with a warning (even on a full page)'
+        "non-numeric total: stop immediately with a warning (even on a full page)"
         strategy = offset_pagination(limit=10, data_path='items', total_path='total')
         state = {'offset': 0, 'limit': 10}
         with self.assertLogs('rest_fetcher.pagination', level='WARNING') as cm:
@@ -561,7 +643,7 @@ class TestOffsetPaginationDottedTotal(unittest.TestCase):
         self.assertTrue(any('invalid total' in m.lower() for m in cm.output))
 
     def test_malformed_total_stops_with_warning_short_page(self):
-        'non-numeric total: stop immediately with a warning (short page too)'
+        "non-numeric total: stop immediately with a warning (short page too)"
         strategy = offset_pagination(limit=10, data_path='items', total_path='total')
         state = {'offset': 0, 'limit': 10}
         with self.assertLogs('rest_fetcher.pagination', level='WARNING') as cm:
@@ -578,47 +660,54 @@ class TestOffsetPaginationDottedTotal(unittest.TestCase):
         self.assertTrue(any('invalid total' in m.lower() for m in cm.output))
 
     def test_items_none_stops(self):
-        'items=None in response should stop cleanly, not raise'
+        "items=None in response should stop cleanly, not raise"
         strategy = offset_pagination(limit=10, data_path='items')
         state = {'offset': 0, 'limit': 10}
         result = strategy['next_request']({'items': None}, state)
         self.assertIsNone(result)
 
     def test_items_dict_stops(self):
-        'items as dict should stop cleanly, not raise'
+        "items as dict should stop cleanly, not raise"
         strategy = offset_pagination(limit=10, data_path='items')
         state = {'offset': 0, 'limit': 10}
         result = strategy['next_request']({'items': {'a': 1}}, state)
         self.assertIsNone(result)
 
-class TestPageNumberPaginationDottedTotalPages(unittest.TestCase):
 
+class TestPageNumberPaginationDottedTotalPages(unittest.TestCase):
     def test_flat_total_pages_key(self):
-        strategy = page_number_pagination(page_size=10, data_path='results', total_pages_path='pages')
+        strategy = page_number_pagination(
+            page_size=10, data_path='results', total_pages_path='pages'
+        )
         state = {'page': 1, 'page_size': 10}
         result = strategy['next_request']({'results': list(range(10)), 'pages': 3}, state)
         self.assertIsNotNone(result)
 
     def test_dotted_total_pages_key(self):
         'nager.at / boozeapi style: {"pagination": {"pages": 63}}'
-        strategy = page_number_pagination(page_size=10, data_path='data',
-                                          total_pages_path='pagination.pages')
+        strategy = page_number_pagination(
+            page_size=10, data_path='data', total_pages_path='pagination.pages'
+        )
         state = {'page': 1, 'page_size': 10}
-        result = strategy['next_request']({'data': list(range(10)), 'pagination': {'pages': 63}}, state
+        result = strategy['next_request'](
+            {'data': list(range(10)), 'pagination': {'pages': 63}}, state
         )
         self.assertIsNotNone(result)
 
     def test_dotted_total_pages_stops_at_last(self):
-        strategy = page_number_pagination(page_size=10, data_path='data',
-                                          total_pages_path='pagination.pages')
+        strategy = page_number_pagination(
+            page_size=10, data_path='data', total_pages_path='pagination.pages'
+        )
         state = {'page': 63, 'page_size': 10}
-        result = strategy['next_request']({'data': list(range(10)), 'pagination': {'pages': 63}}, state
+        result = strategy['next_request'](
+            {'data': list(range(10)), 'pagination': {'pages': 63}}, state
         )
         self.assertIsNone(result)
 
     def test_missing_total_pages_path_stops_with_warning(self):
-        strategy = page_number_pagination(page_size=10, data_path='results',
-                                          total_pages_path='meta.pages')
+        strategy = page_number_pagination(
+            page_size=10, data_path='results', total_pages_path='meta.pages'
+        )
         state = {'page': 1, 'page_size': 10}
         with self.assertLogs('rest_fetcher.pagination', level='WARNING') as cm:
             result = strategy['next_request']({'results': list(range(10)), 'meta': {}}, state)
@@ -626,15 +715,17 @@ class TestPageNumberPaginationDottedTotalPages(unittest.TestCase):
         self.assertTrue(any('invalid total_pages' in m.lower() for m in cm.output))
 
     def test_string_total_pages_coerced(self):
-        strategy = page_number_pagination(page_size=10, data_path='results',
-                                          total_pages_path='pages')
+        strategy = page_number_pagination(
+            page_size=10, data_path='results', total_pages_path='pages'
+        )
         state = {'page': 1, 'page_size': 10}
         result = strategy['next_request']({'results': list(range(10)), 'pages': '5'}, state)
         self.assertIsNotNone(result)
 
     def test_malformed_total_pages_stops_with_warning_full_page(self):
-        strategy = page_number_pagination(page_size=10, data_path='results',
-                                          total_pages_path='pages')
+        strategy = page_number_pagination(
+            page_size=10, data_path='results', total_pages_path='pages'
+        )
         state = {'page': 1, 'page_size': 10}
         with self.assertLogs('rest_fetcher.pagination', level='WARNING') as cm:
             result = strategy['next_request']({'results': list(range(10)), 'pages': 'N/A'}, state)
@@ -642,18 +733,19 @@ class TestPageNumberPaginationDottedTotalPages(unittest.TestCase):
         self.assertTrue(any('invalid total_pages' in m.lower() for m in cm.output))
 
     def test_malformed_total_pages_stops_with_warning_short_page(self):
-        strategy = page_number_pagination(page_size=10, data_path='results',
-                                          total_pages_path='pages')
+        strategy = page_number_pagination(
+            page_size=10, data_path='results', total_pages_path='pages'
+        )
         state = {'page': 1, 'page_size': 10}
         with self.assertLogs('rest_fetcher.pagination', level='WARNING') as cm:
             result = strategy['next_request']({'results': list(range(3)), 'pages': 'N/A'}, state)
         self.assertIsNone(result)
         self.assertTrue(any('invalid total_pages' in m.lower() for m in cm.output))
 
-class TestPaginationStateOnStop(unittest.TestCase):
 
+class TestPaginationStateOnStop(unittest.TestCase):
     def test_offset_state_advances_even_when_stopping_on_total(self):
-        'stop on total: next_request returns None, but return value reflected correct next_offset before stopping'
+        "stop on total: next_request returns None, but return value reflected correct next_offset before stopping"
         strategy = offset_pagination(limit=10, data_path='items', total_path='total')
         state = {'offset': 0, 'limit': 10}
         # next_offset (0+10) == total (10) => stop
@@ -661,8 +753,10 @@ class TestPaginationStateOnStop(unittest.TestCase):
         self.assertIsNone(result)
 
     def test_page_number_state_advances_even_when_stopping_on_total_pages(self):
-        'stop on total_pages: current_page == total_pages => stop'
-        strategy = page_number_pagination(page_size=10, data_path='results', total_pages_path='pages')
+        "stop on total_pages: current_page == total_pages => stop"
+        strategy = page_number_pagination(
+            page_size=10, data_path='results', total_pages_path='pages'
+        )
         state = {'page': 2, 'page_size': 10}
         result = strategy['next_request']({'results': list(range(10)), 'pages': 2}, state)
         self.assertIsNone(result)
@@ -679,10 +773,11 @@ class TestPaginationStateOnStop(unittest.TestCase):
         result = strategy['next_request']({'results': {'unexpected': True}}, state)
         self.assertIsNone(result)
 
-class TestLinkHeaderEdgeCases(unittest.TestCase):
 
+class TestLinkHeaderEdgeCases(unittest.TestCase):
     def setUp(self):
         from rest_fetcher.pagination import _parse_link_next
+
         self.parse = _parse_link_next
 
     def test_link_next_basic(self):
@@ -692,18 +787,18 @@ class TestLinkHeaderEdgeCases(unittest.TestCase):
         self.assertEqual(self.parse('<a>; rel="prev", <b>; rel="next"'), 'b')
 
     def test_link_next_rel_anywhere(self):
-        'rel after other params — real-world GitHub style'
+        "rel after other params — real-world GitHub style"
         self.assertEqual(self.parse('<a>; type="x"; rel="next"'), 'a')
 
     def test_link_next_multiple_rel_params(self):
-        'two separate rel= params; next is second'
+        "two separate rel= params; next is second"
         self.assertEqual(self.parse('<a>; rel="prev"; rel="next"'), 'a')
 
     def test_link_next_space_separated_next_first(self):
         self.assertEqual(self.parse('<a>; rel="next prev"'), 'a')
 
     def test_link_next_space_separated_next_second(self):
-        'next appears second in space-separated value — old code missed this'
+        "next appears second in space-separated value — old code missed this"
         self.assertEqual(self.parse('<a>; rel="prev next"'), 'a')
 
     def test_link_next_case_insensitive(self):
@@ -720,7 +815,7 @@ class TestLinkHeaderEdgeCases(unittest.TestCase):
         self.assertEqual(self.parse('  <a>  ;  rel="next"  '), 'a')
 
     def test_link_next_unquoted_rel(self):
-        'rel=next without quotes — valid per RFC 5988'
+        "rel=next without quotes — valid per RFC 5988"
         self.assertEqual(self.parse('<a>; rel=next'), 'a')
 
     def test_link_next_does_not_match_x_rel_substring(self):
@@ -731,34 +826,40 @@ class TestLinkHeaderEdgeCases(unittest.TestCase):
         self.assertIsNone(self.parse('<a>; title="rel=next"; rel="prev"'))
 
     def test_link_header_lowercase_key_lookup(self):
-        'some HTTP libs normalize header names to lowercase — integration test'
+        "some HTTP libs normalize header names to lowercase — integration test"
         from rest_fetcher.pagination import CycleRunner, link_header_pagination
+
         calls = [0]
 
         def mock_fetch(request, ctx=None, *, run_state):
             calls[0] += 1
             if calls[0] == 1:
-                return outcome([1, 2, 3], request, {'link': '<https://api.example.com/page=2>; rel="next"',
-                                   '_status_code': 200})
+                return outcome(
+                    [1, 2, 3],
+                    request,
+                    {'link': '<https://api.example.com/page=2>; rel="next"', '_status_code': 200},
+                )
             return outcome([4], request, {'_status_code': 200})
 
-        runner = CycleRunner({
-            'next_request': link_header_pagination()['next_request'],
-            'on_response': lambda resp, state: resp,
-        })
+        runner = CycleRunner(
+            {
+                'next_request': link_header_pagination()['next_request'],
+                'on_response': lambda resp, state: resp,
+            }
+        )
         pages = list(runner.run(mock_fetch, {'method': 'GET', 'url': 'https://api.example.com'}))
         self.assertEqual(calls[0], 2)
 
 
 class TestStateReflectsProgressNotNextRequest(unittest.TestCase):
-    '''
+    """
     intentional documentation of state-update-before-stop behaviour.
     state reflects pages consumed, not the next request to be made.
     do not "fix" this — it is intentional and relied upon by on_complete callbacks.
-    '''
+    """
 
     def test_offset_state_on_last_page_reflects_total_consumed(self):
-        'on last page, next_request returns None — the stop is clean with no side-effects'
+        "on last page, next_request returns None — the stop is clean with no side-effects"
         strategy = offset_pagination(limit=10, data_path='items')
         state = {'offset': 20, 'limit': 10}
         # 3 items = short last page — stops; no state mutation expected
@@ -771,12 +872,12 @@ class TestStateReflectsProgressNotNextRequest(unittest.TestCase):
         result = strategy['next_request']({'results': [1, 2, 3]}, state)
         self.assertIsNone(result)
 
-class TestStrategyTypeNormalization(unittest.TestCase):
 
+class TestStrategyTypeNormalization(unittest.TestCase):
     def test_offset_string_limit_coerced_to_int(self):
-        'limit arriving as string from query params should not break stop condition'
+        "limit arriving as string from query params should not break stop condition"
         strategy = offset_pagination(limit=10, data_path='items')
-        state = {'offset': '0', 'limit': '10'}   # strings, as from URL params
+        state = {'offset': '0', 'limit': '10'}  # strings, as from URL params
         # 10 items = full page — should continue
         result = strategy['next_request']({'items': list(range(10))}, state)
         self.assertIsNotNone(result, 'should continue on full page even with string limit')
@@ -797,7 +898,7 @@ class TestStrategyTypeNormalization(unittest.TestCase):
         self.assertEqual(result['params']['page'], 2)
 
     def test_offset_none_limit_falls_back_to_factory(self):
-        'None in state for limit should fall back to factory default, not raise'
+        "None in state for limit should fall back to factory default, not raise"
         strategy = offset_pagination(limit=50, data_path='items')
         state = {'offset': 0, 'limit': None}
         result = strategy['next_request']({'items': list(range(50))}, state)
@@ -812,7 +913,7 @@ class TestStrategyTypeNormalization(unittest.TestCase):
         self.assertEqual(result['params']['page_size'], 50)
 
     def test_offset_state_updated_even_on_last_page(self):
-        'on last page (short), next_request returns None cleanly — no state side-effects'
+        "on last page (short), next_request returns None cleanly — no state side-effects"
         strategy = offset_pagination(limit=10, data_path='items')
         state = {'offset': 0, 'limit': 10}
         # 5 items = short page = last page
@@ -826,81 +927,94 @@ class TestStrategyTypeNormalization(unittest.TestCase):
         self.assertIsNone(result)
 
     def test_offset_state_limit_param_aligned_after_call(self):
-        'effective limit is carried through the return value, not via state mutation'
+        "effective limit is carried through the return value, not via state mutation"
         strategy = offset_pagination(limit=10, limit_param='limit', data_path='items')
-        state = {'offset': 0, 'limit': 25}   # call-time override
+        state = {'offset': 0, 'limit': 25}  # call-time override
         result = strategy['next_request']({'items': list(range(25))}, state)
         self.assertIsNotNone(result)
-        self.assertEqual(result['params']['limit'], 25, 'returned params must carry effective limit')
+        self.assertEqual(
+            result['params']['limit'], 25, 'returned params must carry effective limit'
+        )
 
     def test_page_size_state_aligned_after_call(self):
-        strategy = page_number_pagination(page_size=10, page_size_param='page_size', data_path='results')
+        strategy = page_number_pagination(
+            page_size=10, page_size_param='page_size', data_path='results'
+        )
         state = {'page': 1, 'page_size': 30}
         result = strategy['next_request']({'results': list(range(30))}, state)
         self.assertIsNotNone(result)
         self.assertEqual(result['params']['page_size'], 30)
 
+
 class TestBuiltinPaginationWithClient(unittest.TestCase):
-    'end-to-end tests of built-in strategies through the full APIClient pipeline'
+    "end-to-end tests of built-in strategies through the full APIClient pipeline"
 
     def test_cursor_pagination_full_run(self):
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'endpoints': {
-                'users': {
-                    'method': 'GET',
-                    'path': '/users',
-                    'pagination': cursor_pagination('cursor', 'meta.cursor', 'users'),
-                    'mock': [
-                        {'users': [{'id': 1}, {'id': 2}], 'meta': {'cursor': 'tok2'}},
-                        {'users': [{'id': 3}],             'meta': {'cursor': None}},
-                    ]
-                }
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'endpoints': {
+                    'users': {
+                        'method': 'GET',
+                        'path': '/users',
+                        'pagination': cursor_pagination('cursor', 'meta.cursor', 'users'),
+                        'mock': [
+                            {'users': [{'id': 1}, {'id': 2}], 'meta': {'cursor': 'tok2'}},
+                            {'users': [{'id': 3}], 'meta': {'cursor': None}},
+                        ],
+                    }
+                },
             }
-        })
+        )
         result = client.fetch('users')
         self.assertEqual(result, [[{'id': 1}, {'id': 2}], [{'id': 3}]])
 
     def test_offset_pagination_full_run(self):
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'endpoints': {
-                'items': {
-                    'method': 'GET',
-                    'path': '/items',
-                    'pagination': offset_pagination(limit=2, data_path='items'),
-                    'mock': [
-                        {'items': [1, 2]},   # full page → continue
-                        {'items': [3]},       # short page → stop
-                    ]
-                }
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'endpoints': {
+                    'items': {
+                        'method': 'GET',
+                        'path': '/items',
+                        'pagination': offset_pagination(limit=2, data_path='items'),
+                        'mock': [
+                            {'items': [1, 2]},  # full page → continue
+                            {'items': [3]},  # short page → stop
+                        ],
+                    }
+                },
             }
-        })
+        )
         result = client.fetch('items')
         self.assertEqual(result, [[1, 2], [3]])
 
     def test_offset_full_pipeline_correct_pages(self):
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'endpoints': {
-                'items': {
-                    'pagination': offset_pagination(limit=3, data_path='items'),
-                    'mock': [{'items': [1, 2, 3]}, {'items': [4]}]
-                }
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'endpoints': {
+                    'items': {
+                        'pagination': offset_pagination(limit=3, data_path='items'),
+                        'mock': [{'items': [1, 2, 3]}, {'items': [4]}],
+                    }
+                },
             }
-        })
+        )
         self.assertEqual(client.fetch('items'), [[1, 2, 3], [4]])
 
     def test_page_number_full_pipeline_correct_pages(self):
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'endpoints': {
-                'items': {
-                    'pagination': page_number_pagination(page_size=2, data_path='results'),
-                    'mock': [{'results': [1, 2]}, {'results': [3, 4]}, {'results': [5]}]
-                }
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'endpoints': {
+                    'items': {
+                        'pagination': page_number_pagination(page_size=2, data_path='results'),
+                        'mock': [{'results': [1, 2]}, {'results': [3, 4]}, {'results': [5]}],
+                    }
+                },
             }
-        })
+        )
         self.assertEqual(client.fetch('items'), [[1, 2], [3, 4], [5]])
 
     def test_client_level_pagination_inherited(self):
@@ -910,65 +1024,66 @@ class TestBuiltinPaginationWithClient(unittest.TestCase):
             pages_fetched.append(resp.get('page'))
             return resp.get('data', [])
 
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'pagination': {
-                'next_request': lambda resp, state: None,  # single page
-            },
-            'endpoints': {
-                'ep1': {'mock': [{'page': 1, 'data': ['a']}], 'on_response': on_resp},
-                'ep2': {'mock': [{'page': 2, 'data': ['b']}], 'on_response': on_resp},
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'pagination': {
+                    'next_request': lambda resp, state: None,  # single page
+                },
+                'endpoints': {
+                    'ep1': {'mock': [{'page': 1, 'data': ['a']}], 'on_response': on_resp},
+                    'ep2': {'mock': [{'page': 2, 'data': ['b']}], 'on_response': on_resp},
+                },
             }
-        })
+        )
         client.fetch('ep1')
         client.fetch('ep2')
         self.assertEqual(pages_fetched, [1, 2])
 
     def test_endpoint_disables_inherited_pagination(self):
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'pagination': {
-                'next_request': lambda resp, state: {'params': {'p': 2}},
-            },
-            'endpoints': {
-                'no_pages': {
-                    'pagination': None,
-                    'mock': [{'raw': 'response'}]
-                }
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'pagination': {
+                    'next_request': lambda resp, state: {'params': {'p': 2}},
+                },
+                'endpoints': {'no_pages': {'pagination': None, 'mock': [{'raw': 'response'}]}},
             }
-        })
+        )
         result = client.fetch('no_pages')
         # pagination disabled: raw response returned, no on_response applied
         self.assertEqual(result, {'raw': 'response'})
 
+
 # Item 7 — configurable header scrubbing
 class TestPathResolverInjection(unittest.TestCase):
-
     def test_default_resolver_used_when_not_specified(self):
         from rest_fetcher.pagination import offset_pagination
+
         strategy = offset_pagination(limit=10, data_path='items', total_path='meta.total')
         state = {'offset': 0, 'limit': 10}
-        result = strategy['next_request']({'items': list(range(10)), 'meta': {'total': 25}}, state
-        )
+        result = strategy['next_request']({'items': list(range(10)), 'meta': {'total': 25}}, state)
         self.assertIsNotNone(result)
 
     def test_custom_path_resolver_used_when_provided(self):
-        '''injected resolver is called instead of default _resolve_path'''
+        """injected resolver is called instead of default _resolve_path"""
         from rest_fetcher.pagination import offset_pagination
+
         resolver_calls = []
 
         def my_resolver(resp, path):
             resolver_calls.append(path)
             return resp.get(path)  # flat-only resolver
 
-        strategy = offset_pagination(limit=10, data_path='items',
-                                     total_path='total', path_resolver=my_resolver)
+        strategy = offset_pagination(
+            limit=10, data_path='items', total_path='total', path_resolver=my_resolver
+        )
         state = {'offset': 0, 'limit': 10}
         strategy['next_request']({'items': list(range(10)), 'total': 25}, state)
         self.assertIn('total', resolver_calls, 'custom resolver must be called')
 
     def test_custom_resolver_for_list_index_style(self):
-        '''power user resolver supporting e.g. "data.0.count" or custom logic'''
+        """power user resolver supporting e.g. "data.0.count" or custom logic"""
         from rest_fetcher.pagination import offset_pagination
 
         def advanced_resolver(resp, path):
@@ -986,25 +1101,27 @@ class TestPathResolverInjection(unittest.TestCase):
                     return None
             return value
 
-        strategy = offset_pagination(limit=5, data_path='items',
-                                     total_path='pages.0.total',
-                                     path_resolver=advanced_resolver)
+        strategy = offset_pagination(
+            limit=5, data_path='items', total_path='pages.0.total', path_resolver=advanced_resolver
+        )
         state = {'offset': 0, 'limit': 5}
-        result = strategy['next_request']({'items': list(range(5)), 'pages': [{'total': 20}]}, state
+        result = strategy['next_request'](
+            {'items': list(range(5)), 'pages': [{'total': 20}]}, state
         )
         self.assertIsNotNone(result)
 
     def test_page_number_also_accepts_path_resolver(self):
         from rest_fetcher.pagination import page_number_pagination
+
         resolver_calls = []
 
         def my_resolver(resp, path):
             resolver_calls.append(path)
             return resp.get(path)
 
-        strategy = page_number_pagination(page_size=10, data_path='results',
-                                          total_pages_path='pages',
-                                          path_resolver=my_resolver)
+        strategy = page_number_pagination(
+            page_size=10, data_path='results', total_pages_path='pages', path_resolver=my_resolver
+        )
         state = {'page': 1, 'page_size': 10}
         strategy['next_request']({'results': list(range(10)), 'pages': 5}, state)
         self.assertIn('pages', resolver_calls)
@@ -1024,11 +1141,13 @@ class TestUpdateStateEmptyDictOptimization(unittest.TestCase):
             seen.append(state.get('page'))
             return None
 
-        runner = CycleRunner({
-            'initial_params': {'page': 1},
-            'update_state': update_state,
-            'next_request': next_request,
-        })
+        runner = CycleRunner(
+            {
+                'initial_params': {'page': 1},
+                'update_state': update_state,
+                'next_request': next_request,
+            }
+        )
 
         def mock_fetch(request, ctx=None, *, run_state):
             return outcome({'items': [1]}, request, {'_status_code': 200})
@@ -1049,11 +1168,13 @@ class TestUpdateStateEmptyDictOptimization(unittest.TestCase):
             seen.append((state.get('cursor'), state.get('page')))
             return None
 
-        runner = CycleRunner({
-            'initial_params': {'page': 1, 'cursor': 'tok1'},
-            'update_state': update_state,
-            'next_request': next_request,
-        })
+        runner = CycleRunner(
+            {
+                'initial_params': {'page': 1, 'cursor': 'tok1'},
+                'update_state': update_state,
+                'next_request': next_request,
+            }
+        )
 
         def mock_fetch(request, ctx=None, *, run_state):
             return outcome({'items': [1]}, request, {'_status_code': 200})
@@ -1063,13 +1184,11 @@ class TestUpdateStateEmptyDictOptimization(unittest.TestCase):
         self.assertEqual(seen, [(None, 2)])
 
 
-
-
 class TestCycleRunnerStructure(unittest.TestCase):
     """Structural invariants of CycleRunner."""
 
     def test_pagination_runner_none_has_safe_default_attributes(self):
-        'CycleRunner(None) is structurally sound and exposes safe defaults'
+        "CycleRunner(None) is structurally sound and exposes safe defaults"
         runner = CycleRunner(None)
         self.assertEqual(runner.initial_params, {})
         self.assertIsNone(runner._next_request)
@@ -1079,30 +1198,30 @@ class TestCycleRunnerStructure(unittest.TestCase):
         self.assertIsNone(runner._on_complete)
         self.assertEqual(runner._delay, 0.0)
 
-
     def test_trivial_runner_initial_params_are_a_noop_for_non_paginated_requests(self):
-        'the trivial single-page runner contributes no initial params to non-paginated requests'
+        "the trivial single-page runner contributes no initial params to non-paginated requests"
         seen = {}
 
         def mock_fn(req, ctx=None, *, run_state):
             seen['params'] = dict(req.get('params', {}))
             return {'ok': True}
 
-        client = APIClient({
-            'base_url': 'https://api.example.com',
-            'endpoints': {
-                'ep': {
-                    'method': 'GET',
-                    'path': '/x',
-                    'mock': mock_fn,
-                }
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com',
+                'endpoints': {
+                    'ep': {
+                        'method': 'GET',
+                        'path': '/x',
+                        'mock': mock_fn,
+                    }
+                },
             }
-        })
+        )
 
         result = client.fetch('ep', params={'limit': 50})
         self.assertEqual(result, {'ok': True})
         self.assertEqual(seen['params'], {'limit': 50})
-
 
 
 class TestNestedPathsAndDataPaths(unittest.TestCase):
@@ -1115,24 +1234,23 @@ class TestNestedPathsAndDataPaths(unittest.TestCase):
         self.assertEqual(cfg['on_response'](resp, state), [1, 2])
         self.assertEqual(cfg['next_request'](resp, state), {'params': {'page': 2, 'page_size': 2}})
 
-
     def test_link_header_pagination_accepts_data_path(self):
         cfg = link_header_pagination(data_path='payload.items')
         resp = {'payload': {'items': [1, 2]}}
         state = {'_response_headers': {'Link': '<https://api.example.com/x?page=2>; rel="next"'}}
         self.assertEqual(cfg['on_response'](resp, state), [1, 2])
-        self.assertEqual(cfg['next_request'](resp, state), {'url': 'https://api.example.com/x?page=2'})
-
+        self.assertEqual(
+            cfg['next_request'](resp, state), {'url': 'https://api.example.com/x?page=2'}
+        )
 
     def test_resolve_path_supports_list_indexes(self):
         self.assertEqual(_resolve_path({'items': [{'name': 'a'}]}, 'items.0.name'), 'a')
 
 
-
 class TestParserArity(unittest.TestCase):
-
     def setUp(self):
         from rest_fetcher.client import _parser_arity
+
         self.arity = _parser_arity
 
     def test_one_arg_function(self):
@@ -1142,11 +1260,11 @@ class TestParserArity(unittest.TestCase):
         self.assertEqual(self.arity(lambda r, p: p), 2)
 
     def test_two_arg_with_default_on_second(self):
-        'second arg has a default — parser declares intent to receive parsed, so treated as 2-arg'
+        "second arg has a default — parser declares intent to receive parsed, so treated as 2-arg"
         self.assertEqual(self.arity(lambda r, p=None: p), 2)
 
     def test_var_positional_treated_as_two_arg(self):
-        '*args can accept a second positional — treated as 2-arg'
+        "*args can accept a second positional — treated as 2-arg"
         self.assertEqual(self.arity(lambda *args: args), 2)
 
     def test_one_plus_var_positional(self):
@@ -1154,34 +1272,41 @@ class TestParserArity(unittest.TestCase):
 
     def test_callable_class_one_arg(self):
         class P:
-            def __call__(self, response): return response
+            def __call__(self, response):
+                return response
+
         self.assertEqual(self.arity(P()), 1)
 
     def test_callable_class_two_arg(self):
         class P:
-            def __call__(self, response, parsed): return parsed
+            def __call__(self, response, parsed):
+                return parsed
+
         self.assertEqual(self.arity(P()), 2)
 
     def test_inspection_failure_defaults_to_one(self):
-        'if signature cannot be inspected, fall back to 1-arg (safe default)'
+        "if signature cannot be inspected, fall back to 1-arg (safe default)"
         from rest_fetcher.client import _parser_arity
+
         # builtins like len have no inspectable Python signature on some platforms
         # simulate by checking the fallback path directly
         self.assertIn(_parser_arity(len), (1, 2))  # just must not raise
 
 
 class TestResponseParserArity(unittest.TestCase):
-
     def _client_with_parser(self, parser):
-        return APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'response_parser': parser,
-            'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
-        })
+        return APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'response_parser': parser,
+                'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
+            }
+        )
 
     def test_one_arg_parser_receives_raw_response(self):
-        '1-arg parser: gets raw Response, no pre-decode'
+        "1-arg parser: gets raw Response, no pre-decode"
         received = {}
+
         def parser(response):
             received['type'] = type(response).__name__
             return {'from': 'custom'}
@@ -1193,8 +1318,9 @@ class TestResponseParserArity(unittest.TestCase):
         self.assertEqual(received['type'], 'MagicMock')
 
     def test_two_arg_parser_receives_response_and_pre_parsed(self):
-        '2-arg parser: gets (response, pre_parsed) where pre_parsed is already decoded JSON'
+        "2-arg parser: gets (response, pre_parsed) where pre_parsed is already decoded JSON"
         received = {}
+
         def parser(response, parsed):
             received['parsed'] = parsed
             return parsed
@@ -1206,7 +1332,8 @@ class TestResponseParserArity(unittest.TestCase):
         self.assertEqual(received['parsed'], {'key': 'val'})
 
     def test_two_arg_parser_can_ignore_parsed_and_use_response(self):
-        '2-arg parser can discard pre_parsed and read response.text directly'
+        "2-arg parser can discard pre_parsed and read response.text directly"
+
         def parser(response, parsed):
             return {'raw_len': len(response.text)}
 
@@ -1217,8 +1344,9 @@ class TestResponseParserArity(unittest.TestCase):
         self.assertIn('raw_len', result)
 
     def test_two_arg_parser_pre_parsed_is_none_for_empty_body(self):
-        '2-arg parser: pre_parsed is None when body is empty (e.g. 204)'
+        "2-arg parser: pre_parsed is None when body is empty (e.g. 204)"
         received = {}
+
         def parser(response, parsed):
             received['parsed'] = parsed
             return {}
@@ -1232,35 +1360,39 @@ class TestResponseParserArity(unittest.TestCase):
         self.assertIsNone(received['parsed'])
 
     def test_one_arg_default_parser_behaviour_unchanged(self):
-        'no custom parser: default JSON decode works exactly as before'
+        "no custom parser: default JSON decode works exactly as before"
         with patch('requests.Session.request') as m:
             m.return_value = make_response(200, {'items': [1, 2, 3]})
-            result = APIClient({
-                'base_url': 'https://api.example.com/v1',
-                'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
-            }).fetch('ep')
+            result = APIClient(
+                {
+                    'base_url': 'https://api.example.com/v1',
+                    'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
+                }
+            ).fetch('ep')
         self.assertEqual(result, {'items': [1, 2, 3]})
 
     def test_one_arg_parser_json_not_decoded_redundantly(self):
-        '1-arg parser: parser_arity is detected as 1 for a single-arg callable'
+        "1-arg parser: parser_arity is detected as 1 for a single-arg callable"
 
         def counting_parser(response):
             return {'ok': True}
 
         with patch('requests.Session.request') as m:
             m.return_value = make_response(200, {'x': 1})
-            client = APIClient({
-                'base_url': 'https://api.example.com/v1',
-                'response_parser': counting_parser,
-                'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
-            })
+            client = APIClient(
+                {
+                    'base_url': 'https://api.example.com/v1',
+                    'response_parser': counting_parser,
+                    'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
+                }
+            )
             # verify arity was detected as 1
             job = client._make_job('ep', {})
             self.assertEqual(job._parser_arity, 1)
 
 
 class TestDefaultParseResponseEmptyBody(unittest.TestCase):
-    'unit tests for the empty-body detection logic in default_parse_response'
+    "unit tests for the empty-body detection logic in default_parse_response"
 
     def _response(self, content=b'', content_type='application/json'):
         r = MagicMock()
@@ -1273,16 +1405,19 @@ class TestDefaultParseResponseEmptyBody(unittest.TestCase):
 
     def test_empty_bytes_returns_none(self):
         from rest_fetcher.parsing import default_parse_response
+
         r = self._response(b'')
         self.assertIsNone(default_parse_response(r, 'json'))
 
     def test_nonempty_json_returns_dict(self):
         from rest_fetcher.parsing import default_parse_response
+
         r = self._response(b'{"a": 1}')
         self.assertEqual(default_parse_response(r, 'json'), {'a': 1})
 
     def test_whitespace_only_text_returns_none(self):
         from rest_fetcher.parsing import default_parse_response
+
         r = MagicMock()
         r.content = None
         r.text = '   '
@@ -1291,6 +1426,7 @@ class TestDefaultParseResponseEmptyBody(unittest.TestCase):
 
     def test_none_content_falls_back_to_text_check(self):
         from rest_fetcher.parsing import default_parse_response
+
         r = MagicMock()
         r.content = None
         r.text = 'hello'
@@ -1305,7 +1441,6 @@ class TestDefaultParseResponseEmptyBody(unittest.TestCase):
         self.assertEqual(default_parse_response(r, response_format='json'), {'a': 1})
 
 
-
 class TestCsvDelimiter(unittest.TestCase):
     def test_response_format_csv_with_custom_delimiter(self):
         schema = {
@@ -1317,7 +1452,7 @@ class TestCsvDelimiter(unittest.TestCase):
                     'response_format': 'csv',
                     'csv_delimiter': ';',
                 }
-            }
+            },
         }
         response = MagicMock()
         response.status_code = 200
@@ -1339,7 +1474,7 @@ class TestCsvDelimiter(unittest.TestCase):
                     'path': '/report.csv',
                     'response_format': 'csv',
                 }
-            }
+            },
         }
         response = MagicMock()
         response.status_code = 200
@@ -1356,15 +1491,17 @@ class TestCsvDelimiter(unittest.TestCase):
         fixture_dir = tempfile.TemporaryDirectory()
         try:
             fixture_path = os.path.join(fixture_dir.name, 'csv_fixture.json')
-            payload = [{
-                'kind': 'raw_response',
-                'format': 'csv',
-                'status_code': 200,
-                'headers': {'Content-Type': 'text/csv'},
-                'url': 'https://example.com/report.csv',
-                'body': 'id;name\n1;Alice\n2;Bob\n',
-                'request_headers': {},
-            }]
+            payload = [
+                {
+                    'kind': 'raw_response',
+                    'format': 'csv',
+                    'status_code': 200,
+                    'headers': {'Content-Type': 'text/csv'},
+                    'url': 'https://example.com/report.csv',
+                    'body': 'id;name\n1;Alice\n2;Bob\n',
+                    'request_headers': {},
+                }
+            ]
             with open(fixture_path, 'w', encoding='utf-8') as f:
                 json.dump(payload, f)
             schema = {
@@ -1377,7 +1514,7 @@ class TestCsvDelimiter(unittest.TestCase):
                         'csv_delimiter': ';',
                         'playback': {'path': fixture_path, 'mode': 'load'},
                     }
-                }
+                },
             }
             rows = APIClient(schema).fetch('report')
             self.assertEqual(rows[1]['id'], '2')
@@ -1387,7 +1524,6 @@ class TestCsvDelimiter(unittest.TestCase):
     def test_csv_delimiter_schema_validation(self):
         with self.assertRaises(SchemaError):
             validate({**simple_schema(), 'csv_delimiter': ';;'})
-
 
 
 class TestCsvEncoding(unittest.TestCase):
@@ -1402,7 +1538,7 @@ class TestCsvEncoding(unittest.TestCase):
                     'csv_delimiter': ';',
                     'encoding': 'cp1251',
                 }
-            }
+            },
         }
         response = MagicMock()
         response.status_code = 200
@@ -1426,7 +1562,7 @@ class TestCsvEncoding(unittest.TestCase):
                     'response_format': 'csv',
                     'csv_delimiter': ';',
                 }
-            }
+            },
         }
         response = MagicMock()
         response.status_code = 200
@@ -1461,7 +1597,7 @@ class TestCsvEncoding(unittest.TestCase):
                         'encoding': 'cp1251',
                         'playback': {'path': fixture_path, 'mode': 'save'},
                     }
-                }
+                },
             }
             with patch('requests.Session.request', return_value=response):
                 APIClient(schema_save).fetch('report')
@@ -1476,7 +1612,7 @@ class TestCsvEncoding(unittest.TestCase):
                         'encoding': 'cp1251',
                         'playback': {'path': fixture_path, 'mode': 'load'},
                     }
-                }
+                },
             }
             rows = APIClient(schema_load).fetch('report')
             self.assertEqual(rows[0]['name'], 'Алиса')
@@ -1498,7 +1634,7 @@ class TestCsvDefaults(unittest.TestCase):
                     'path': '/report.csv',
                     'response_format': 'csv',
                 }
-            }
+            },
         }
         response = MagicMock()
         response.status_code = 200
@@ -1519,31 +1655,39 @@ class TestCsvEncodingAndDelimiterOrder(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, 'fixture.json')
             with open(path, 'w', encoding='utf-8') as f:
-                json.dump([{
-                    'kind': 'raw_response',
-                    'format': 'csv',
-                    'status_code': 200,
-                    'headers': {'Content-Type': 'text/csv'},
-                    'url': 'https://api.example.com/report.csv',
-                    'content_b64': base64.b64encode(encoded).decode('ascii'),
-                    'encoding': 'cp1251',
-                }], f)
-            client = APIClient({
-                'base_url': 'https://api.example.com',
-                'encoding': 'utf-8',
-                'endpoints': {
-                    'report': {
-                        'method': 'GET',
-                        'path': '/report.csv',
-                        'response_format': 'csv',
-                        'encoding': 'cp1251',
-                        'csv_delimiter': ';',
-                        'playback': {'path': path, 'mode': 'load'},
-                    }
+                json.dump(
+                    [
+                        {
+                            'kind': 'raw_response',
+                            'format': 'csv',
+                            'status_code': 200,
+                            'headers': {'Content-Type': 'text/csv'},
+                            'url': 'https://api.example.com/report.csv',
+                            'content_b64': base64.b64encode(encoded).decode('ascii'),
+                            'encoding': 'cp1251',
+                        }
+                    ],
+                    f,
+                )
+            client = APIClient(
+                {
+                    'base_url': 'https://api.example.com',
+                    'encoding': 'utf-8',
+                    'endpoints': {
+                        'report': {
+                            'method': 'GET',
+                            'path': '/report.csv',
+                            'response_format': 'csv',
+                            'encoding': 'cp1251',
+                            'csv_delimiter': ';',
+                            'playback': {'path': path, 'mode': 'load'},
+                        }
+                    },
                 }
-            })
+            )
             rows = client.fetch('report')
         self.assertEqual(rows, [{'name': 'Иван', 'city': 'Минск'}])
+
 
 class TestCanonicalParser(unittest.TestCase):
     def test_canonical_parser_feeds_pagination_and_response_parser(self):
@@ -1577,7 +1721,7 @@ class TestCanonicalParser(unittest.TestCase):
                     'pagination': {'next_request': next_request},
                     'on_response': on_response,
                 }
-            }
+            },
         }
 
         with patch('requests.Session.request') as mock_req:
@@ -1590,8 +1734,6 @@ class TestCanonicalParser(unittest.TestCase):
         self.assertEqual(seen['next'], {'canonical': True})
         self.assertEqual(seen['parser_arg'], {'canonical': True})
         self.assertEqual(seen['on_response'], {'wrapped': {'canonical': True}})
-
-
 
 
 class TestDefaultParseResponseBytes(unittest.TestCase):
@@ -1614,7 +1756,9 @@ class TestDefaultParseResponseBytes(unittest.TestCase):
 
     def test_text_uses_content_bytes(self) -> None:
         resp = self._ExplodingTextResponse(b'hello', 'text/plain')
-        self.assertEqual(default_parse_response(resp, response_format='text', encoding='utf-8'), 'hello')
+        self.assertEqual(
+            default_parse_response(resp, response_format='text', encoding='utf-8'), 'hello'
+        )
 
     def test_xml_uses_content_bytes(self) -> None:
         resp = self._ExplodingTextResponse(b'<root><x>1</x></root>', 'application/xml')
@@ -1623,7 +1767,9 @@ class TestDefaultParseResponseBytes(unittest.TestCase):
 
     def test_csv_uses_content_bytes_then_decodes_then_parses(self) -> None:
         resp = self._ExplodingTextResponse(b'a;b\n1;2\n', 'text/csv')
-        rows = default_parse_response(resp, response_format='csv', csv_delimiter=';', encoding='utf-8')
+        rows = default_parse_response(
+            resp, response_format='csv', csv_delimiter=';', encoding='utf-8'
+        )
         self.assertEqual(rows, [{'a': '1', 'b': '2'}])
 
     def test_auto_format_detection_uses_content_bytes(self) -> None:
@@ -1651,6 +1797,7 @@ class TestParsingWithPlaybackFixtures(unittest.TestCase):
 
     def test_next_request_receives_xml_element_in_playback(self) -> None:
         from xml.etree.ElementTree import Element
+
         playback_path = self.tmp_path / 'xml_playback.json'
         pages = [
             {
@@ -1679,20 +1826,22 @@ class TestParsingWithPlaybackFixtures(unittest.TestCase):
                 return None
             return {'url': next_url}
 
-        client = APIClient({
-            'base_url': 'https://example.test',
-            'endpoints': {
-                'feed': {
-                    'path': '/feed',
-                    'response_format': 'xml',
-                    'pagination': {
-                        'next_request': next_request,
-                    },
-                    'on_response': lambda resp, _state: resp.findall('.//items/*'),
-                    'playback': {'mode': 'load', 'path': str(playback_path)},
-                }
+        client = APIClient(
+            {
+                'base_url': 'https://example.test',
+                'endpoints': {
+                    'feed': {
+                        'path': '/feed',
+                        'response_format': 'xml',
+                        'pagination': {
+                            'next_request': next_request,
+                        },
+                        'on_response': lambda resp, _state: resp.findall('.//items/*'),
+                        'playback': {'mode': 'load', 'path': str(playback_path)},
+                    }
+                },
             }
-        })
+        )
         items = client.fetch('feed')
         self.assertEqual(len(items), 2)
 
@@ -1726,21 +1875,23 @@ class TestParsingWithPlaybackFixtures(unittest.TestCase):
                 return None
             return {'url': next_url}
 
-        client = APIClient({
-            'base_url': 'https://example.test',
-            'endpoints': {
-                'report': {
-                    'path': '/report',
-                    'response_format': 'csv',
-                    'csv_delimiter': ';',
-                    'pagination': {
-                        'next_request': next_request,
-                    },
-                    'on_response': lambda resp, _state: resp[0]['id'],
-                    'playback': {'mode': 'load', 'path': str(playback_path)},
-                }
+        client = APIClient(
+            {
+                'base_url': 'https://example.test',
+                'endpoints': {
+                    'report': {
+                        'path': '/report',
+                        'response_format': 'csv',
+                        'csv_delimiter': ';',
+                        'pagination': {
+                            'next_request': next_request,
+                        },
+                        'on_response': lambda resp, _state: resp[0]['id'],
+                        'playback': {'mode': 'load', 'path': str(playback_path)},
+                    }
+                },
             }
-        })
+        )
         ids = client.fetch('report')
         self.assertEqual(ids, ['1', '2'])
 
@@ -1772,23 +1923,24 @@ class TestParsingWithPlaybackFixtures(unittest.TestCase):
             self.assertIn('wrapped', page_payload)
             return page_payload['wrapped']['items']
 
-        client = APIClient({
-            'base_url': 'https://example.test',
-            'endpoints': {
-                'items': {
-                    'path': '/items',
-                    'response_format': 'json',
-                    'response_parser': response_parser,
-                    'pagination': {
-                        'next_request': next_request,
-                    },
-                    'on_response': on_response,
-                    'playback': {'mode': 'load', 'path': str(playback_path)},
-                }
+        client = APIClient(
+            {
+                'base_url': 'https://example.test',
+                'endpoints': {
+                    'items': {
+                        'path': '/items',
+                        'response_format': 'json',
+                        'response_parser': response_parser,
+                        'pagination': {
+                            'next_request': next_request,
+                        },
+                        'on_response': on_response,
+                        'playback': {'mode': 'load', 'path': str(playback_path)},
+                    }
+                },
             }
-        })
+        )
         self.assertEqual(client.fetch('items'), [1, 2])
-
 
 
 def test_link_header_pagination_looks_up_header_case_insensitively_for_unusual_casing():

@@ -25,7 +25,10 @@ def _check_type(value, expected, path):
 
 def _check_callable(value, path):
     if not callable(value):
-        _err(path, f'expected a callable (function or object with __call__), got {type(value).__name__!r}')
+        _err(
+            path,
+            f'expected a callable (function or object with __call__), got {type(value).__name__!r}',
+        )
 
 
 def _check_one_of(value, valid_set, path):
@@ -34,7 +37,7 @@ def _check_one_of(value, valid_set, path):
 
 
 def _validate_on_event_kinds(value, path):
-    '''validates and normalizes on_event_kinds in place.
+    """validates and normalizes on_event_kinds in place.
 
     returns the normalized value:
         None              → all events pass through
@@ -45,7 +48,7 @@ def _validate_on_event_kinds(value, path):
     iterables normalize to frozenset.
     empty collections normalize to empty frozenset (silences all events).
     all kind strings are validated against _KNOWN_EVENT_KINDS.
-    '''
+    """
     if value is None:
         return None
 
@@ -61,7 +64,9 @@ def _validate_on_event_kinds(value, path):
             if not isinstance(item, str):
                 _err(path, f'expected string event kind, got {type(item).__name__!r}')
             if item not in _KNOWN_EVENT_KINDS:
-                _err(path, f'unknown event kind {item!r} — known kinds: {sorted(_KNOWN_EVENT_KINDS)}')
+                _err(
+                    path, f'unknown event kind {item!r} — known kinds: {sorted(_KNOWN_EVENT_KINDS)}'
+                )
         return frozenset(value)
 
     _err(path, f'expected None, str, or collection of strings, got {type(value).__name__!r}')
@@ -122,15 +127,17 @@ def _validate_retry(retry, path='retry', strict=False):
             _err(f'{path}.max_attempts', 'must be >= 1')
 
     backoff = retry.get('backoff')
-    if 'backoff' in retry:
-        if not callable(backoff):
-            _check_one_of(backoff, _VALID_BACKOFF, f'{path}.backoff')
+    if 'backoff' in retry and not callable(backoff):
+        _check_one_of(backoff, _VALID_BACKOFF, f'{path}.backoff')
 
     if 'on_codes' in retry:
         _check_type(retry['on_codes'], list, f'{path}.on_codes')
         bad = [c for c in retry['on_codes'] if not isinstance(c, int)]
         if bad:
-            _err(f'{path}.on_codes', f'all status codes must be integers — got non-int value(s): {bad}')
+            _err(
+                f'{path}.on_codes',
+                f'all status codes must be integers — got non-int value(s): {bad}',
+            )
 
     if 'base_delay' in retry:
         _check_type(retry['base_delay'], (int, float), f'{path}.base_delay')
@@ -158,7 +165,10 @@ def _validate_retry(retry, path='retry', strict=False):
     if callable(backoff):
         jitter = retry.get('jitter', False)
         if jitter:
-            _err(path, 'callable backoff cannot be combined with jitter — include randomness in the callable itself')
+            _err(
+                path,
+                'callable backoff cannot be combined with jitter — include randomness in the callable itself',
+            )
 
 
 def _validate_rate_limit(rl, path='rate_limit', strict=False):
@@ -209,6 +219,7 @@ def _validate_rate_limit(rl, path='rate_limit', strict=False):
         if 'sleep' in rl and rl['sleep'] is not None:
             _check_callable(rl['sleep'], f'{path}.sleep')
 
+
 def _validate_timeout(value, path):
     if isinstance(value, tuple):
         if len(value) != 2 or not all(isinstance(v, (int, float)) for v in value):
@@ -221,7 +232,7 @@ def _validate_timeout(value, path):
 
 
 def _validate_metrics(value: Any, path: str) -> None:
-    if value is None or isinstance(value, bool) or isinstance(value, MetricsSession):
+    if value is None or isinstance(value, (bool, MetricsSession)):
         return
     _err(path, 'must be True, False, None, or a MetricsSession instance')
 
@@ -264,7 +275,10 @@ def _validate_pagination(pagination, path='pagination', strict=False):
         # silent migration failures where hooks silently stop firing.
         for moved_key in _MOVED_PAGINATION_KEYS:
             if moved_key in pagination:
-                _err(path, f'{path}.{moved_key} is not supported; use {moved_key} at endpoint level instead')
+                _err(
+                    path,
+                    f'{path}.{moved_key} is not supported; use {moved_key} at endpoint level instead',
+                )
 
     if strict and not is_helper:
         unknown = set(pagination) - _KNOWN_PAGINATION_KEYS
@@ -275,7 +289,10 @@ def _validate_pagination(pagination, path='pagination', strict=False):
     # next_request is required — it is the only stop signal; omitting it means
     # pagination would loop forever with no way to terminate
     if 'next_request' not in pagination:
-        _err(f'{path}.next_request', 'required — must be a callable(parsed_body, state) -> dict | None')
+        _err(
+            f'{path}.next_request',
+            'required — must be a callable(parsed_body, state) -> dict | None',
+        )
     _check_callable(pagination['next_request'], f'{path}.next_request')
 
     if 'delay' in pagination:
@@ -311,35 +328,46 @@ def _validate_endpoint(name, endpoint, path=None, strict=False):
     if 'form' in endpoint:
         _check_type(endpoint['form'], dict, f'{path}.form')
 
-    if 'files' in endpoint:
-        if not isinstance(endpoint['files'], (dict, list, tuple)):
-            _err(f'{path}.files', 'expected dict, list, or tuple')
+    if 'files' in endpoint and not isinstance(endpoint['files'], (dict, list, tuple)):
+        _err(f'{path}.files', 'expected dict, list, or tuple')
 
     if 'body' in endpoint and 'form' in endpoint:
         _err(path, 'body and form are mutually exclusive — use one or the other, not both')
 
     if 'body' in endpoint and 'files' in endpoint:
-        _err(path, 'body and files are mutually exclusive — use body for JSON or files for multipart uploads, not both')
+        _err(
+            path,
+            'body and files are mutually exclusive — use body for JSON or files for multipart uploads, not both',
+        )
 
     # pagination at endpoint level — merges over client-level defaults
     if 'pagination' in endpoint:
         _validate_pagination(endpoint['pagination'], f'{path}.pagination', strict=strict)
 
-    optional_callables = ('on_response', 'on_page', 'on_complete', 'on_page_complete', 'update_state', 'on_error', 'on_event', 'on_request')
+    optional_callables = (
+        'on_response',
+        'on_page',
+        'on_complete',
+        'on_page_complete',
+        'update_state',
+        'on_error',
+        'on_event',
+        'on_request',
+    )
     for key in optional_callables:
         if key in endpoint and endpoint[key] is not None:
             _check_callable(endpoint[key], f'{path}.{key}')
 
     if 'on_event_kinds' in endpoint:
-        endpoint['on_event_kinds'] = _validate_on_event_kinds(endpoint['on_event_kinds'], f'{path}.on_event_kinds')
+        endpoint['on_event_kinds'] = _validate_on_event_kinds(
+            endpoint['on_event_kinds'], f'{path}.on_event_kinds'
+        )
 
-    if 'retry' in endpoint:
-        if endpoint['retry'] is not None:
-            _validate_retry(endpoint['retry'], f'{path}.retry', strict=strict)
+    if 'retry' in endpoint and endpoint['retry'] is not None:
+        _validate_retry(endpoint['retry'], f'{path}.retry', strict=strict)
 
-    if 'rate_limit' in endpoint:
-        if endpoint['rate_limit'] is not None:
-            _validate_rate_limit(endpoint['rate_limit'], f'{path}.rate_limit', strict=strict)
+    if 'rate_limit' in endpoint and endpoint['rate_limit'] is not None:
+        _validate_rate_limit(endpoint['rate_limit'], f'{path}.rate_limit', strict=strict)
     if 'log_level' in endpoint:
         _check_one_of(endpoint['log_level'], _VALID_LOG_LEVELS, f'{path}.log_level')
 
@@ -351,8 +379,9 @@ def _validate_endpoint(name, endpoint, path=None, strict=False):
 
     if 'response_format' in endpoint:
         _check_type(endpoint['response_format'], str, f'{path}.response_format')
-        _check_one_of(endpoint['response_format'], VALID_RESPONSE_FORMATS, f'{path}.response_format')
-
+        _check_one_of(
+            endpoint['response_format'], VALID_RESPONSE_FORMATS, f'{path}.response_format'
+        )
 
     if 'response_parser' in endpoint and endpoint['response_parser'] is not None:
         _check_callable(endpoint['response_parser'], f'{path}.response_parser')
@@ -392,16 +421,54 @@ def _validate_endpoint(name, endpoint, path=None, strict=False):
 
 
 _KNOWN_SCHEMA_KEYS = {
-    'base_url', 'auth', 'retry', 'rate_limit', 'pagination', 'log_level',
-    'headers', 'timeout', 'on_error', 'on_event', 'on_event_kinds', 'on_request',
-    'response_parser', 'canonical_parser', 'response_format',
-    'state', 'session_config', 'files', 'csv_delimiter', 'encoding',
-    'scrub_headers', 'scrub_query_params', 'endpoints', 'debug', 'metrics',
+    'base_url',
+    'auth',
+    'retry',
+    'rate_limit',
+    'pagination',
+    'log_level',
+    'headers',
+    'timeout',
+    'on_error',
+    'on_event',
+    'on_event_kinds',
+    'on_request',
+    'response_parser',
+    'canonical_parser',
+    'response_format',
+    'state',
+    'session_config',
+    'files',
+    'csv_delimiter',
+    'encoding',
+    'scrub_headers',
+    'scrub_query_params',
+    'endpoints',
+    'debug',
+    'metrics',
 }
 
 
-_KNOWN_RETRY_KEYS = {'max_attempts', 'backoff', 'on_codes', 'base_delay', 'max_delay', 'jitter', 'reactive_wait_on_terminal', 'max_retry_after'}
-_KNOWN_RATE_LIMIT_KEYS = {'respect_retry_after', 'min_delay', 'strategy', 'requests_per_second', 'burst', 'on_limit', 'clock', 'sleep'}
+_KNOWN_RETRY_KEYS = {
+    'max_attempts',
+    'backoff',
+    'on_codes',
+    'base_delay',
+    'max_delay',
+    'jitter',
+    'reactive_wait_on_terminal',
+    'max_retry_after',
+}
+_KNOWN_RATE_LIMIT_KEYS = {
+    'respect_retry_after',
+    'min_delay',
+    'strategy',
+    'requests_per_second',
+    'burst',
+    'on_limit',
+    'clock',
+    'sleep',
+}
 _KNOWN_PAGINATION_KEYS = {'next_request', 'delay', 'initial_params', '_rf_pagination_helper'}
 
 # lifecycle hooks that were moved from pagination to endpoint level.
@@ -417,22 +484,56 @@ _KNOWN_AUTH_KEYS = {
     'bearer': {'type', 'token', 'token_callback'},
     'basic': {'type', 'username', 'password'},
     'oauth2': {'type', 'token_url', 'client_id', 'client_secret', 'scope', 'expiry_margin'},
-    'oauth2_password': {'type', 'token_url', 'client_id', 'client_secret', 'username', 'password', 'scope', 'expiry_margin'},
+    'oauth2_password': {
+        'type',
+        'token_url',
+        'client_id',
+        'client_secret',
+        'username',
+        'password',
+        'scope',
+        'expiry_margin',
+    },
     'callback': {'type', 'handler'},
 }
 
 _KNOWN_ENDPOINT_KEYS = {
-    'method', 'path', 'headers', 'params', 'body', 'form', 'files',
-    'timeout', 'log_level', 'debug', 'response_format', 'response_parser',
-    'canonical_parser', 'csv_delimiter', 'encoding', 'pagination',
-    'on_response', 'on_page', 'on_complete', 'on_page_complete', 'update_state',
-    'on_error', 'on_event', 'on_event_kinds', 'on_request',
-    'scrub_headers', 'scrub_query_params', 'mock', 'playback', 'rate_limit', 'retry',
+    'method',
+    'path',
+    'headers',
+    'params',
+    'body',
+    'form',
+    'files',
+    'timeout',
+    'log_level',
+    'debug',
+    'response_format',
+    'response_parser',
+    'canonical_parser',
+    'csv_delimiter',
+    'encoding',
+    'pagination',
+    'on_response',
+    'on_page',
+    'on_complete',
+    'on_page_complete',
+    'update_state',
+    'on_error',
+    'on_event',
+    'on_event_kinds',
+    'on_request',
+    'scrub_headers',
+    'scrub_query_params',
+    'mock',
+    'playback',
+    'rate_limit',
+    'retry',
 }
 
 
 def validate(schema, strict=False):
-    '''
+    """
     validates the top-level api client schema dict.
     raises SchemaError with a descriptive message on the first problem found.
     returns the schema unchanged so it can be used inline:
@@ -440,7 +541,7 @@ def validate(schema, strict=False):
 
     strict=True raises SchemaError on any unrecognised top-level or endpoint keys,
     which catches typos like 'on_requets' that would otherwise be silently ignored.
-    '''
+    """
     _check_type(schema, dict, 'root')
 
     if 'base_url' not in schema:
@@ -475,7 +576,9 @@ def validate(schema, strict=False):
     if 'on_event' in schema and schema['on_event'] is not None:
         _check_callable(schema['on_event'], 'on_event')
     if 'on_event_kinds' in schema:
-        schema['on_event_kinds'] = _validate_on_event_kinds(schema['on_event_kinds'], 'on_event_kinds')
+        schema['on_event_kinds'] = _validate_on_event_kinds(
+            schema['on_event_kinds'], 'on_event_kinds'
+        )
     if 'on_request' in schema and schema['on_request'] is not None:
         _check_callable(schema['on_request'], 'on_request')
 
@@ -501,7 +604,10 @@ def validate(schema, strict=False):
         _VALID_SESSION_KEYS = {'verify', 'cert', 'proxies', 'max_redirects'}
         unknown = set(sc) - _VALID_SESSION_KEYS
         if unknown:
-            _err('session_config', f'unknown key(s): {sorted(unknown)} — supported: {sorted(_VALID_SESSION_KEYS)}')
+            _err(
+                'session_config',
+                f'unknown key(s): {sorted(unknown)} — supported: {sorted(_VALID_SESSION_KEYS)}',
+            )
         if 'verify' in sc and not isinstance(sc['verify'], (bool, str)):
             _err('session_config.verify', 'must be a bool or a path string to a CA bundle')
         if 'cert' in sc and not isinstance(sc['cert'], (str, tuple)):
@@ -514,7 +620,10 @@ def validate(schema, strict=False):
                 _err('session_config.max_redirects', 'must be >= 0')
 
     if 'files' in schema:
-        _err('files', 'client-level files is not supported — define files on an endpoint or pass it at call time')
+        _err(
+            'files',
+            'client-level files is not supported — define files on an endpoint or pass it at call time',
+        )
 
     if 'csv_delimiter' in schema:
         _validate_csv_delimiter(schema['csv_delimiter'], 'csv_delimiter')
@@ -541,17 +650,23 @@ def validate(schema, strict=False):
     if strict:
         unknown_root = set(schema) - _KNOWN_SCHEMA_KEYS
         if unknown_root:
-            _err('root', f'unrecognised key(s): {sorted(unknown_root)} — use strict=False to suppress, or check for typos')
+            _err(
+                'root',
+                f'unrecognised key(s): {sorted(unknown_root)} — use strict=False to suppress, or check for typos',
+            )
         for name, endpoint in schema['endpoints'].items():
             unknown_ep = set(endpoint) - _KNOWN_ENDPOINT_KEYS
             if unknown_ep:
-                _err(f'endpoints.{name}', f'unrecognised key(s): {sorted(unknown_ep)} — use strict=False to suppress, or check for typos')
+                _err(
+                    f'endpoints.{name}',
+                    f'unrecognised key(s): {sorted(unknown_ep)} — use strict=False to suppress, or check for typos',
+                )
 
     return schema
 
 
 def merge_dicts(base, override):
-    '''
+    """
     deep merges two dicts. override wins on conflicts.
     non-dict values in override replace base entirely.
     used to merge client-level defaults with endpoint-level config.
@@ -560,7 +675,7 @@ def merge_dicts(base, override):
         base     = {'headers': {'Accept': 'application/json'}, 'timeout': 30}
         override = {'headers': {'Authorization': 'Bearer x'}, 'timeout': 60}
         result   = {'headers': {'Accept': 'application/json', 'Authorization': 'Bearer x'}, 'timeout': 60}
-    '''
+    """
     result = base | override  # override wins on shallow conflicts
     for k in base:
         if k in override and isinstance(base[k], dict) and isinstance(override[k], dict):
@@ -569,17 +684,32 @@ def merge_dicts(base, override):
 
 
 def resolve_endpoint(client_schema, endpoint_name):
-    '''
+    """
     returns the fully resolved config for a single endpoint:
     client-level defaults merged with endpoint-level overrides.
     pagination is merged independently since it's a nested dict.
-    '''
+    """
     endpoint = client_schema['endpoints'].get(endpoint_name)
     if endpoint is None:
         raise SchemaError(f'unknown endpoint: {endpoint_name!r}')
 
     # fields that propagate from client level to endpoint if not overridden
-    inherited_keys = ('headers', 'on_error', 'on_event', 'on_event_kinds', 'on_request', 'log_level', 'response_parser', 'canonical_parser', 'response_format', 'csv_delimiter', 'encoding', 'scrub_headers', 'scrub_query_params', 'retry')
+    inherited_keys = (
+        'headers',
+        'on_error',
+        'on_event',
+        'on_event_kinds',
+        'on_request',
+        'log_level',
+        'response_parser',
+        'canonical_parser',
+        'response_format',
+        'csv_delimiter',
+        'encoding',
+        'scrub_headers',
+        'scrub_query_params',
+        'retry',
+    )
     resolved = {k: client_schema[k] for k in inherited_keys if k in client_schema}
     resolved = merge_dicts(resolved, endpoint)
 

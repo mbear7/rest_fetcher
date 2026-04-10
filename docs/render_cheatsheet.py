@@ -27,33 +27,33 @@ from docx.shared import Pt, RGBColor, Twips
 # ---------------------------------------------------------------------------
 # Page geometry (US Letter, 1" margins)
 # ---------------------------------------------------------------------------
-PAGE_WIDTH_DXA  = 12240
-MARGIN_DXA      = 1440
-CONTENT_DXA     = PAGE_WIDTH_DXA - 2 * MARGIN_DXA   # 9360
+PAGE_WIDTH_DXA = 12240
+MARGIN_DXA = 1440
+CONTENT_DXA = PAGE_WIDTH_DXA - 2 * MARGIN_DXA  # 9360
 
 # ---------------------------------------------------------------------------
 # Colour palette  (matches original docx)
 # ---------------------------------------------------------------------------
-C_HEADING_1  = RGBColor(0x1A, 0x3A, 0x5C)   # dark navy
-C_HEADING_2  = RGBColor(0x1A, 0x3A, 0x5C)
-C_HEADING_3  = RGBColor(0x2E, 0x75, 0xB6)   # medium blue
-C_BODY       = RGBColor(0x33, 0x33, 0x33)   # near-black
-C_CODE_FG    = RGBColor(0x1A, 0x3A, 0x5C)   # navy (inline code)
-C_CODE_BG    = RGBColor(0xF2, 0xF6, 0xFA)   # light blue-grey (code blocks)
-C_NOTE_BG    = RGBColor(0xFF, 0xF8, 0xE7)   # pale amber (blockquotes)
-C_NOTE_BAR   = RGBColor(0xE8, 0xB8, 0x30)   # amber bar
-C_TH_BG      = RGBColor(0x1A, 0x3A, 0x5C)   # table header bg
-C_TH_FG      = RGBColor(0xFF, 0xFF, 0xFF)   # table header text
-C_TD_BG_ALT  = RGBColor(0xF7, 0xFA, 0xFD)   # table row alt bg
-C_BORDER     = RGBColor(0xBF, 0xCF, 0xE0)   # table border
-C_HR         = RGBColor(0xBF, 0xCF, 0xE0)   # horizontal rule
+C_HEADING_1 = RGBColor(0x1A, 0x3A, 0x5C)  # dark navy
+C_HEADING_2 = RGBColor(0x1A, 0x3A, 0x5C)
+C_HEADING_3 = RGBColor(0x2E, 0x75, 0xB6)  # medium blue
+C_BODY = RGBColor(0x33, 0x33, 0x33)  # near-black
+C_CODE_FG = RGBColor(0x1A, 0x3A, 0x5C)  # navy (inline code)
+C_CODE_BG = RGBColor(0xF2, 0xF6, 0xFA)  # light blue-grey (code blocks)
+C_NOTE_BG = RGBColor(0xFF, 0xF8, 0xE7)  # pale amber (blockquotes)
+C_NOTE_BAR = RGBColor(0xE8, 0xB8, 0x30)  # amber bar
+C_TH_BG = RGBColor(0x1A, 0x3A, 0x5C)  # table header bg
+C_TH_FG = RGBColor(0xFF, 0xFF, 0xFF)  # table header text
+C_TD_BG_ALT = RGBColor(0xF7, 0xFA, 0xFD)  # table row alt bg
+C_BORDER = RGBColor(0xBF, 0xCF, 0xE0)  # table border
+C_HR = RGBColor(0xBF, 0xCF, 0xE0)  # horizontal rule
 
 # ---------------------------------------------------------------------------
 # Font sizes
 # ---------------------------------------------------------------------------
-SZ_H1   = Pt(16)
-SZ_H2   = Pt(13)
-SZ_H3   = Pt(11)
+SZ_H1 = Pt(16)
+SZ_H2 = Pt(13)
+SZ_H3 = Pt(11)
 SZ_BODY = Pt(9.5)
 SZ_CODE = Pt(8.5)
 SZ_NOTE = Pt(9)
@@ -64,6 +64,7 @@ FONT_CODE = 'Courier New'
 # ---------------------------------------------------------------------------
 # AST compatibility helpers
 # ---------------------------------------------------------------------------
+
 
 def _node_type(node) -> str | None:
     return node.get('type') if isinstance(node, dict) else None
@@ -118,6 +119,7 @@ def _first_contentful(items):
 # Table column-width heuristics
 # ---------------------------------------------------------------------------
 
+
 def _classify_table(head_texts: list[str], body_rows: list[list]) -> list[int]:
     """
     Return a list of column widths in DXA that sum to CONTENT_DXA.
@@ -132,8 +134,7 @@ def _classify_table(head_texts: list[str], body_rows: list[list]) -> list[int]:
     if n == 0:
         return [CONTENT_DXA]
 
-    KEY_HEADERS = {'key', 'type', 'mode', 'exception', 'callback',
-                   'method', 'component'}
+    KEY_HEADERS = {'key', 'type', 'mode', 'exception', 'callback', 'method', 'component'}
 
     if n == 2:
         h0 = head_texts[0].strip().lower()
@@ -141,10 +142,7 @@ def _classify_table(head_texts: list[str], body_rows: list[list]) -> list[int]:
         is_key_col = h0 in KEY_HEADERS
         if not is_key_col and body_rows:
             # check whether ≥60% of first-column cells are code-only
-            code_count = sum(
-                1 for row in body_rows
-                if row and _is_code_only(row[0])
-            )
+            code_count = sum(1 for row in body_rows if row and _is_code_only(row[0]))
             is_key_col = code_count / len(body_rows) >= 0.6
         if is_key_col:
             w0 = int(CONTENT_DXA * 0.28)
@@ -217,6 +215,7 @@ def _is_code_only(cell_children) -> bool:
 # XML helpers
 # ---------------------------------------------------------------------------
 
+
 def _get_or_replace(parent, tag: str):
     """Return existing child with *tag* or create and append a new one."""
     existing = parent.find(qn(tag))
@@ -228,17 +227,41 @@ def _get_or_replace(parent, tag: str):
 
 # tcPr child order (OOXML CT_TcPr):
 #   cnfStyle, tcW, gridSpan, hMerge, vMerge, tcBorders, shd, noWrap, tcMar, ...
-_TCP_ORDER = ['w:cnfStyle', 'w:tcW', 'w:gridSpan', 'w:hMerge', 'w:vMerge',
-              'w:tcBorders', 'w:shd', 'w:noWrap', 'w:tcMar',
-              'w:textDirection', 'w:tcFitText', 'w:vAlign']
+_TCP_ORDER = [
+    'w:cnfStyle',
+    'w:tcW',
+    'w:gridSpan',
+    'w:hMerge',
+    'w:vMerge',
+    'w:tcBorders',
+    'w:shd',
+    'w:noWrap',
+    'w:tcMar',
+    'w:textDirection',
+    'w:tcFitText',
+    'w:vAlign',
+]
 
 # pPr child order (OOXML CT_PPr, simplified):
 #   pStyle, keepNext, keepLines, pageBreakBefore, framePr,
 #   pBdr, shd, tabs, spacing, ind, contextualSpacing, ...
-_PPR_ORDER = ['w:pStyle', 'w:keepNext', 'w:keepLines', 'w:pageBreakBefore',
-              'w:framePr', 'w:suppressLineNumbers', 'w:pBdr', 'w:shd',
-              'w:tabs', 'w:suppressAutoHyphens', 'w:spacing', 'w:ind',
-              'w:contextualSpacing', 'w:adjustRightInd', 'w:jc']
+_PPR_ORDER = [
+    'w:pStyle',
+    'w:keepNext',
+    'w:keepLines',
+    'w:pageBreakBefore',
+    'w:framePr',
+    'w:suppressLineNumbers',
+    'w:pBdr',
+    'w:shd',
+    'w:tabs',
+    'w:suppressAutoHyphens',
+    'w:spacing',
+    'w:ind',
+    'w:contextualSpacing',
+    'w:adjustRightInd',
+    'w:jc',
+]
 
 
 def _insert_ordered(parent, el, order: list[str]):
@@ -271,46 +294,50 @@ def _insert_ordered(parent, el, order: list[str]):
 
 
 def _set_cell_width(cell, width_dxa: int):
-    tc   = cell._tc
+    tc = cell._tc
     tcPr = tc.get_or_add_tcPr()
-    tcW  = OxmlElement('w:tcW')
+    tcW = OxmlElement('w:tcW')
     tcW.set(qn('w:type'), 'dxa')
-    tcW.set(qn('w:w'),    str(width_dxa))
+    tcW.set(qn('w:w'), str(width_dxa))
     _insert_ordered(tcPr, tcW, _TCP_ORDER)
 
 
 def _set_cell_borders(cell, color_hex: str):
-    tc   = cell._tc
+    tc = cell._tc
     tcPr = tc.get_or_add_tcPr()
     tcBorders = OxmlElement('w:tcBorders')
-    for side in ('top', 'start', 'bottom', 'end'):   # strict OOXML: start/end not left/right
+    for side in ('top', 'start', 'bottom', 'end'):  # strict OOXML: start/end not left/right
         el = OxmlElement(f'w:{side}')
-        el.set(qn('w:val'),   'single')
-        el.set(qn('w:sz'),    '1')
+        el.set(qn('w:val'), 'single')
+        el.set(qn('w:sz'), '1')
         el.set(qn('w:color'), color_hex)
         tcBorders.append(el)
     _insert_ordered(tcPr, tcBorders, _TCP_ORDER)
 
 
 def _set_cell_shading(cell, fill_hex: str):
-    tc   = cell._tc
+    tc = cell._tc
     tcPr = tc.get_or_add_tcPr()
-    shd  = OxmlElement('w:shd')
-    shd.set(qn('w:val'),   'clear')
+    shd = OxmlElement('w:shd')
+    shd.set(qn('w:val'), 'clear')
     shd.set(qn('w:color'), 'auto')
-    shd.set(qn('w:fill'),  fill_hex)
+    shd.set(qn('w:fill'), fill_hex)
     _insert_ordered(tcPr, shd, _TCP_ORDER)
 
 
 def _set_cell_margins(cell, top=80, bottom=80, left=120, right=120):
-    tc   = cell._tc
+    tc = cell._tc
     tcPr = tc.get_or_add_tcPr()
     tcMar = OxmlElement('w:tcMar')
-    for side, val in (('top', top), ('left', left),   # transitional: left/right not start/end
-                      ('bottom', bottom), ('right', right)):
+    for side, val in (
+        ('top', top),
+        ('left', left),  # transitional: left/right not start/end
+        ('bottom', bottom),
+        ('right', right),
+    ):
         el = OxmlElement(f'w:{side}')
         el.set(qn('w:type'), 'dxa')
-        el.set(qn('w:w'),    str(val))
+        el.set(qn('w:w'), str(val))
         tcMar.append(el)
     _insert_ordered(tcPr, tcMar, _TCP_ORDER)
 
@@ -320,28 +347,28 @@ def _rgb_hex(color: RGBColor) -> str:
 
 
 def _add_bottom_border_to_para(para, color: RGBColor, size: int = 6):
-    pPr  = para._p.get_or_add_pPr()
+    pPr = para._p.get_or_add_pPr()
     pBdr = pPr.find(qn('w:pBdr'))
     if pBdr is None:
         pBdr = OxmlElement('w:pBdr')
         _insert_ordered(pPr, pBdr, _PPR_ORDER)
-    bot  = OxmlElement('w:bottom')
-    bot.set(qn('w:val'),   'single')
-    bot.set(qn('w:sz'),    str(size))
+    bot = OxmlElement('w:bottom')
+    bot.set(qn('w:val'), 'single')
+    bot.set(qn('w:sz'), str(size))
     bot.set(qn('w:space'), '1')
     bot.set(qn('w:color'), _rgb_hex(color))
-    pBdr.append(bot)   # bottom comes after top and start in CT_PBdr
+    pBdr.append(bot)  # bottom comes after top and start in CT_PBdr
 
 
 def _add_left_bar_to_para(para, color: RGBColor, size: int = 18):
-    pPr  = para._p.get_or_add_pPr()
+    pPr = para._p.get_or_add_pPr()
     pBdr = pPr.find(qn('w:pBdr'))
     if pBdr is None:
         pBdr = OxmlElement('w:pBdr')
         _insert_ordered(pPr, pBdr, _PPR_ORDER)
-    left = OxmlElement('w:left')   # transitional OOXML uses left (not start) for pBdr
-    left.set(qn('w:val'),   'single')
-    left.set(qn('w:sz'),    str(size))
+    left = OxmlElement('w:left')  # transitional OOXML uses left (not start) for pBdr
+    left.set(qn('w:val'), 'single')
+    left.set(qn('w:sz'), str(size))
     left.set(qn('w:space'), '4')
     left.set(qn('w:color'), _rgb_hex(color))
     pBdr.append(left)
@@ -350,9 +377,9 @@ def _add_left_bar_to_para(para, color: RGBColor, size: int = 18):
 def _shade_para_bg(para, color: RGBColor):
     pPr = para._p.get_or_add_pPr()
     shd = OxmlElement('w:shd')
-    shd.set(qn('w:val'),   'clear')
+    shd.set(qn('w:val'), 'clear')
     shd.set(qn('w:color'), 'auto')
-    shd.set(qn('w:fill'),  _rgb_hex(color))
+    shd.set(qn('w:fill'), _rgb_hex(color))
     _insert_ordered(pPr, shd, _PPR_ORDER)
 
 
@@ -367,20 +394,19 @@ def _set_para_indent(para, left_twips: int, hanging_twips: int = 0):
     """
     pPr = para._p.get_or_add_pPr()
     ind = OxmlElement('w:ind')
-    ind.set(qn('w:left'),  str(int(left_twips)))
+    ind.set(qn('w:left'), str(int(left_twips)))
     if hanging_twips:
         ind.set(qn('w:hanging'), str(int(hanging_twips)))
     _insert_ordered(pPr, ind, _PPR_ORDER)
 
 
-def _set_para_spacing(para, before: int = 0, after: int = 0,
-                      line: int | None = None):
-    pPr     = para._p.get_or_add_pPr()
+def _set_para_spacing(para, before: int = 0, after: int = 0, line: int | None = None):
+    pPr = para._p.get_or_add_pPr()
     spacing = OxmlElement('w:spacing')
     spacing.set(qn('w:before'), str(before))
-    spacing.set(qn('w:after'),  str(after))
+    spacing.set(qn('w:after'), str(after))
     if line is not None:
-        spacing.set(qn('w:line'),     str(line))
+        spacing.set(qn('w:line'), str(line))
         spacing.set(qn('w:lineRule'), 'auto')
     _insert_ordered(pPr, spacing, _PPR_ORDER)
 
@@ -389,9 +415,15 @@ def _set_para_spacing(para, before: int = 0, after: int = 0,
 # Run-level inline rendering
 # ---------------------------------------------------------------------------
 
-def _render_inline(para, nodes: list, bold: bool = False,
-                   italic: bool = False, base_size: Pt = SZ_BODY,
-                   base_color: RGBColor = C_BODY):
+
+def _render_inline(
+    para,
+    nodes: list,
+    bold: bool = False,
+    italic: bool = False,
+    base_size: Pt = SZ_BODY,
+    base_color: RGBColor = C_BODY,
+):
     """Recursively add runs to *para* from an inline node list.
 
     Mistune AST differs between versions/plugins:
@@ -413,12 +445,17 @@ def _render_inline(para, nodes: list, bold: bool = False,
         if isinstance(node, str):
             if node:
                 run = para.add_run(_decode_text(node))
-                _style_run(run, bold=bold, italic=italic,
-                           size=base_size, color=base_color)
+                _style_run(run, bold=bold, italic=italic, size=base_size, color=base_color)
             continue
         if isinstance(node, (list, tuple)):
-            _render_inline(para, list(node), bold=bold, italic=italic,
-                           base_size=base_size, base_color=base_color)
+            _render_inline(
+                para,
+                list(node),
+                bold=bold,
+                italic=italic,
+                base_size=base_size,
+                base_color=base_color,
+            )
             continue
         if not isinstance(node, dict):
             continue
@@ -431,8 +468,7 @@ def _render_inline(para, nodes: list, bold: bool = False,
         if t in ('text', 'raw_text'):
             if raw_text:
                 run = para.add_run(_decode_text(raw_text))
-                _style_run(run, bold=bold, italic=italic,
-                           size=base_size, color=base_color)
+                _style_run(run, bold=bold, italic=italic, size=base_size, color=base_color)
 
         elif t == 'softbreak':
             run = para.add_run(' ')
@@ -440,33 +476,48 @@ def _render_inline(para, nodes: list, bold: bool = False,
 
         elif t == 'linebreak':
             br_run = OxmlElement('w:r')
-            br     = OxmlElement('w:br')
+            br = OxmlElement('w:br')
             br_run.append(br)
             para._p.append(br_run)
 
         elif t in ('codespan', 'inline_code', 'code_inline'):
             if raw_text:
                 run = para.add_run(_decode_text(raw_text))
-                run.font.name  = FONT_CODE
-                run.font.size  = Pt(base_size.pt - 0.5)
+                run.font.name = FONT_CODE
+                run.font.size = Pt(base_size.pt - 0.5)
                 run.font.color.rgb = C_CODE_FG
-                run.font.bold  = bold
+                run.font.bold = bold
 
         elif t == 'strong':
-            _render_inline(para, _children(node),
-                           bold=True, italic=italic,
-                           base_size=base_size, base_color=base_color)
+            _render_inline(
+                para,
+                _children(node),
+                bold=True,
+                italic=italic,
+                base_size=base_size,
+                base_color=base_color,
+            )
 
         elif t == 'emphasis':
-            _render_inline(para, _children(node),
-                           bold=bold, italic=True,
-                           base_size=base_size, base_color=base_color)
+            _render_inline(
+                para,
+                _children(node),
+                bold=bold,
+                italic=True,
+                base_size=base_size,
+                base_color=base_color,
+            )
 
         elif t == 'link':
             # render link text only (no hyperlink machinery needed for cheatsheet)
-            _render_inline(para, _children(node),
-                           bold=bold, italic=italic,
-                           base_size=base_size, base_color=base_color)
+            _render_inline(
+                para,
+                _children(node),
+                bold=bold,
+                italic=italic,
+                base_size=base_size,
+                base_color=base_color,
+            )
 
         elif t == 'blank_line':
             pass
@@ -475,14 +526,17 @@ def _render_inline(para, nodes: list, bold: bool = False,
             # unknown inline — render children if present, else raw/text content
             children = _children(node)
             if children:
-                _render_inline(para, children, bold=bold, italic=italic,
-                               base_size=base_size, base_color=base_color)
+                _render_inline(
+                    para,
+                    children,
+                    bold=bold,
+                    italic=italic,
+                    base_size=base_size,
+                    base_color=base_color,
+                )
             elif raw_text:
                 run = para.add_run(_decode_text(raw_text))
-                _style_run(run, bold=bold, italic=italic,
-                           size=base_size, color=base_color)
-
-
+                _style_run(run, bold=bold, italic=italic, size=base_size, color=base_color)
 
 
 def _decode_text(text: str) -> str:
@@ -496,18 +550,19 @@ def _decode_text(text: str) -> str:
         return ''
     return html.unescape(str(text))
 
-def _style_run(run, bold=False, italic=False,
-               size: Pt = SZ_BODY, color: RGBColor = C_BODY):
-    run.font.name      = FONT_BODY
-    run.font.size      = size
-    run.font.bold      = bold
-    run.font.italic    = italic
+
+def _style_run(run, bold=False, italic=False, size: Pt = SZ_BODY, color: RGBColor = C_BODY):
+    run.font.name = FONT_BODY
+    run.font.size = size
+    run.font.bold = bold
+    run.font.italic = italic
     run.font.color.rgb = color
 
 
 # ---------------------------------------------------------------------------
 # Block-level rendering
 # ---------------------------------------------------------------------------
+
 
 class DocxRenderer:
     def __init__(self, doc: Document):
@@ -544,9 +599,14 @@ class DocxRenderer:
         val = attrs.get('ordered', node.get('ordered', False))
         return bool(val)
 
-    def _para(self, text: str = '', bold: bool = False,
-              size: Pt = SZ_BODY, color: RGBColor = C_BODY,
-              align=WD_ALIGN_PARAGRAPH.LEFT) -> object:
+    def _para(
+        self,
+        text: str = '',
+        bold: bool = False,
+        size: Pt = SZ_BODY,
+        color: RGBColor = C_BODY,
+        align=WD_ALIGN_PARAGRAPH.LEFT,
+    ) -> object:
         p = self.doc.add_paragraph()
         p.alignment = align
         if text:
@@ -554,9 +614,13 @@ class DocxRenderer:
             _style_run(run, bold=bold, size=size, color=color)
         return p
 
-    def _inline_para(self, nodes: list, size: Pt = SZ_BODY,
-                     color: RGBColor = C_BODY,
-                     align=WD_ALIGN_PARAGRAPH.LEFT) -> object:
+    def _inline_para(
+        self,
+        nodes: list,
+        size: Pt = SZ_BODY,
+        color: RGBColor = C_BODY,
+        align=WD_ALIGN_PARAGRAPH.LEFT,
+    ) -> object:
         p = self.doc.add_paragraph()
         p.alignment = align
         _render_inline(p, nodes, base_size=size, base_color=color)
@@ -565,7 +629,7 @@ class DocxRenderer:
     # -- block handlers ------------------------------------------------------
 
     def render_heading(self, node: dict):
-        level    = self._get_level(node)
+        level = self._get_level(node)
         children = self._children_of(node)
 
         if level == 1:
@@ -592,7 +656,7 @@ class DocxRenderer:
         else:
             p = self._inline_para(children, size=SZ_BODY, color=C_HEADING_3)
             for run in p.runs:
-                run.font.bold  = True
+                run.font.bold = True
                 run.font.italic = True
             _set_para_spacing(p, before=120, after=40)
 
@@ -602,9 +666,9 @@ class DocxRenderer:
         _set_para_spacing(p, before=0, after=80)
 
     def render_block_code(self, node: dict):
-        code  = self._text_of(node, '').rstrip('\n')
+        code = self._text_of(node, '').rstrip('\n')
         lines = code.split('\n')
-        p     = self.doc.add_paragraph()
+        p = self.doc.add_paragraph()
         _set_para_spacing(p, before=60, after=60)
         _shade_para_bg(p, C_CODE_BG)
         _set_para_indent(p, left_twips=180)
@@ -612,22 +676,19 @@ class DocxRenderer:
             if i > 0:
                 # w:br must be inside a w:r element
                 br_run = OxmlElement('w:r')
-                br     = OxmlElement('w:br')
+                br = OxmlElement('w:br')
                 br_run.append(br)
                 p._p.append(br_run)
             run = p.add_run(line)
-            run.font.name      = FONT_CODE
-            run.font.size      = SZ_CODE
+            run.font.name = FONT_CODE
+            run.font.size = SZ_CODE
             run.font.color.rgb = C_CODE_FG
 
     def render_block_quote(self, node: dict):
         children = self._children_of(node)
         for child in children:
             if child.get('type') == 'paragraph':
-                p = self._inline_para(
-                    self._children_of(child),
-                    size=SZ_NOTE, color=C_BODY
-                )
+                p = self._inline_para(self._children_of(child), size=SZ_NOTE, color=C_BODY)
                 _shade_para_bg(p, C_NOTE_BG)
                 _add_left_bar_to_para(p, C_NOTE_BAR)
                 _set_para_indent(p, left_twips=360)
@@ -642,19 +703,21 @@ class DocxRenderer:
 
     def render_list(self, node: dict, level: int = 0):
         ordered = self._is_ordered_list(node)
-        items   = self._children_of(node)
+        items = self._children_of(node)
         for idx, item in enumerate(items, start=1):
-            self._render_list_item(item, ordered=ordered,
-                                   number=idx, level=level)
+            self._render_list_item(item, ordered=ordered, number=idx, level=level)
 
-    def _render_list_item(self, item: dict, ordered: bool,
-                          number: int, level: int):
+    def _render_list_item(self, item: dict, ordered: bool, number: int, level: int):
         children = self._children_of(item)
         first = _first_contentful(children)
 
         inline_nodes = []
         remainder = []
-        if isinstance(first, dict) and _node_type(first) in ('paragraph', 'block_text', 'list_item'):
+        if isinstance(first, dict) and _node_type(first) in (
+            'paragraph',
+            'block_text',
+            'list_item',
+        ):
             inline_nodes = self._children_of(first)
             seen_first = False
             for child in children:
@@ -674,8 +737,7 @@ class DocxRenderer:
             remainder = list(children)
 
         p = self.doc.add_paragraph()
-        _set_para_indent(p, left_twips=360 + level * 360,
-                         hanging_twips=240)
+        _set_para_indent(p, left_twips=360 + level * 360, hanging_twips=240)
         _set_para_spacing(p, before=0, after=40)
 
         bullet = f'{number}.' if ordered else '•'
@@ -696,12 +758,12 @@ class DocxRenderer:
                 self.render_node(child)
 
     def render_table(self, node: dict):
-        children   = self._children_of(node)
-        head_node  = next((c for c in children if c['type'] == 'table_head'), None)
-        body_node  = next((c for c in children if c['type'] == 'table_body'), None)
+        children = self._children_of(node)
+        head_node = next((c for c in children if c['type'] == 'table_head'), None)
+        body_node = next((c for c in children if c['type'] == 'table_body'), None)
 
         head_cells = self._children_of(head_node) if head_node else []
-        body_rows  = []
+        body_rows = []
         if body_node:
             for row in self._children_of(body_node):
                 body_rows.append(self._children_of(row))
@@ -711,23 +773,22 @@ class DocxRenderer:
             return
 
         # collect plain text from header for heuristic
-        head_texts = [_inline_to_text(self._children_of(c))
-                      for c in head_cells]
+        head_texts = [_inline_to_text(self._children_of(c)) for c in head_cells]
         col_widths = _classify_table(head_texts, body_rows)
 
         n_rows = 1 + len(body_rows)
-        table  = self.doc.add_table(rows=n_rows, cols=n_cols)
+        table = self.doc.add_table(rows=n_rows, cols=n_cols)
         table.style = 'Table Grid'
 
         # set table width and lock column widths (fixed layout)
-        tbl    = table._tbl
-        tblPr  = tbl.tblPr
-        tblW   = tblPr.find(qn('w:tblW'))
+        tbl = table._tbl
+        tblPr = tbl.tblPr
+        tblW = tblPr.find(qn('w:tblW'))
         if tblW is None:
             tblW = OxmlElement('w:tblW')
             tblPr.append(tblW)
         tblW.set(qn('w:type'), 'dxa')
-        tblW.set(qn('w:w'),    str(CONTENT_DXA))
+        tblW.set(qn('w:w'), str(CONTENT_DXA))
 
         # tblLayout fixed — critical: tells Word to honour explicit col widths
         # insert before tblLook (which python-docx places last)
@@ -752,35 +813,32 @@ class DocxRenderer:
             _set_cell_margins(cell)
 
             # clear default paragraph, add styled one
-            cell.paragraphs[0]._element.getparent().remove(
-                cell.paragraphs[0]._element)
+            cell.paragraphs[0]._element.getparent().remove(cell.paragraphs[0]._element)
             p = cell.add_paragraph()
             _set_para_spacing(p, before=0, after=0)
-            _render_inline(p, self._children_of(cell_node),
-                           bold=True,
-                           base_size=SZ_BODY, base_color=C_TH_FG)
+            _render_inline(
+                p, self._children_of(cell_node), bold=True, base_size=SZ_BODY, base_color=C_TH_FG
+            )
 
         # body rows
         for ri, row_cells in enumerate(body_rows):
-            drow    = table.rows[ri + 1]
-            bg_hex  = _rgb_hex(C_TD_BG_ALT) if ri % 2 else 'FFFFFF'
+            drow = table.rows[ri + 1]
+            bg_hex = _rgb_hex(C_TD_BG_ALT) if ri % 2 else 'FFFFFF'
             for ci in range(n_cols):
-                cell       = drow.cells[ci]
-                cell_node  = row_cells[ci] if ci < len(row_cells) else {}
+                cell = drow.cells[ci]
+                cell_node = row_cells[ci] if ci < len(row_cells) else {}
                 cell_nodes = self._children_of(cell_node)
-                width      = col_widths[ci]
+                width = col_widths[ci]
 
                 _set_cell_width(cell, width)
                 _set_cell_shading(cell, bg_hex)
                 _set_cell_borders(cell, _rgb_hex(C_BORDER))
                 _set_cell_margins(cell)
 
-                cell.paragraphs[0]._element.getparent().remove(
-                    cell.paragraphs[0]._element)
+                cell.paragraphs[0]._element.getparent().remove(cell.paragraphs[0]._element)
                 p = cell.add_paragraph()
                 _set_para_spacing(p, before=0, after=0)
-                _render_inline(p, cell_nodes,
-                               base_size=SZ_BODY, base_color=C_BODY)
+                _render_inline(p, cell_nodes, base_size=SZ_BODY, base_color=C_BODY)
 
         # spacing after table via tblPr tblCellMar or just a small para
         p = self.doc.add_paragraph()
@@ -818,9 +876,17 @@ class DocxRenderer:
             return
 
         # Block code: mistune versions vary ('block_code', 'fenced_code', 'code_block', etc.)
-        if t == 'block_code' or (isinstance(t, str) and ('code' in t) and t not in ('codespan', 'inline_code', 'code_inline')):
+        if t == 'block_code' or (
+            isinstance(t, str)
+            and ('code' in t)
+            and t not in ('codespan', 'inline_code', 'code_inline')
+        ):
             # Only treat it as a block if it has any direct text payload; otherwise fall through.
-            if self._text_of(node, '').strip() or node.get('info') is not None or node.get('lang') is not None:
+            if (
+                self._text_of(node, '').strip()
+                or node.get('info') is not None
+                or node.get('lang') is not None
+            ):
                 self.render_block_code(node)
                 return
 
@@ -857,6 +923,7 @@ class DocxRenderer:
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _inline_to_text(nodes) -> str:
     """Extract plain text from inline-ish structures for heuristics."""
     parts = []
@@ -879,23 +946,24 @@ def _inline_to_text(nodes) -> str:
 # Document setup
 # ---------------------------------------------------------------------------
 
+
 def _setup_document() -> Document:
     doc = Document()
 
     # page size and margins
     section = doc.sections[0]
-    section.page_width   = Twips(PAGE_WIDTH_DXA)
-    section.page_height  = Twips(15840)
-    section.left_margin  = Twips(MARGIN_DXA)
+    section.page_width = Twips(PAGE_WIDTH_DXA)
+    section.page_height = Twips(15840)
+    section.left_margin = Twips(MARGIN_DXA)
     section.right_margin = Twips(MARGIN_DXA)
-    section.top_margin   = Twips(MARGIN_DXA)
+    section.top_margin = Twips(MARGIN_DXA)
     section.bottom_margin = Twips(MARGIN_DXA)
 
     # default paragraph font
     style = doc.styles['Normal']
-    font  = style.font
-    font.name  = FONT_BODY
-    font.size  = SZ_BODY
+    font = style.font
+    font.name = FONT_BODY
+    font.size = SZ_BODY
     font.color.rgb = C_BODY
 
     return doc
@@ -905,20 +973,21 @@ def _setup_document() -> Document:
 # Entry point
 # ---------------------------------------------------------------------------
 
+
 def _patch_settings(docx_path: Path):
     """Fix python-docx bug: w:zoom missing required w:percent attribute."""
     import os
     import zipfile
+
     tmp = docx_path.with_suffix('.tmp.docx')
-    with zipfile.ZipFile(docx_path, 'r') as zin, \
-         zipfile.ZipFile(tmp, 'w', zipfile.ZIP_DEFLATED) as zout:
+    with (
+        zipfile.ZipFile(docx_path, 'r') as zin,
+        zipfile.ZipFile(tmp, 'w', zipfile.ZIP_DEFLATED) as zout,
+    ):
         for item in zin.infolist():
             data = zin.read(item.filename)
             if item.filename == 'word/settings.xml':
-                data = data.replace(
-                    b'<w:zoom w:val="bestFit"/>',
-                    b'<w:zoom w:percent="100"/>'
-                )
+                data = data.replace(b'<w:zoom w:val="bestFit"/>', b'<w:zoom w:percent="100"/>')
             zout.writestr(item, data)
     os.replace(tmp, docx_path)
 
@@ -933,7 +1002,7 @@ def convert(md_path: Path, docx_path: Path):
         md = mistune.create_markdown(renderer='ast')
     ast = md(text)
 
-    doc      = _setup_document()
+    doc = _setup_document()
     renderer = DocxRenderer(doc)
     renderer.render_all(ast)
 
@@ -945,10 +1014,10 @@ def convert(md_path: Path, docx_path: Path):
 def main():
     script_dir = Path(__file__).parent
 
-    md_path   = Path(sys.argv[1]) if len(sys.argv) > 1 \
-                else script_dir / 'cheatsheet.md'
-    docx_path = Path(sys.argv[2]) if len(sys.argv) > 2 \
-                else script_dir / 'rest_fetcher_cheatsheet.docx'
+    md_path = Path(sys.argv[1]) if len(sys.argv) > 1 else script_dir / 'cheatsheet.md'
+    docx_path = (
+        Path(sys.argv[2]) if len(sys.argv) > 2 else script_dir / 'rest_fetcher_cheatsheet.docx'
+    )
 
     if not md_path.exists():
         print(f'error: {md_path} not found', file=sys.stderr)

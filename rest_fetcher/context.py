@@ -7,7 +7,7 @@ from .types import StopSignal
 
 
 class OperationContext:
-    '''
+    """
     shared operation state passed through the request execution and pagination layers.
     created once per fetch()/stream() call; not reused across calls.
 
@@ -23,15 +23,23 @@ class OperationContext:
                       page fetch and before each http attempt (so backoff counts toward it)
 
     all times use time.monotonic() — immune to wall-clock adjustments.
-    '''
+    """
 
-    __slots__ = ('started_at', 'request_count', 'page_count',
-                 'max_pages', 'max_requests', 'time_limit')
+    __slots__ = (
+        'started_at',
+        'request_count',
+        'page_count',
+        'max_pages',
+        'max_requests',
+        'time_limit',
+    )
 
-    def __init__(self,
-                 max_pages: int | None = None,
-                 max_requests: int | None = None,
-                 time_limit: float | None = None) -> None:
+    def __init__(
+        self,
+        max_pages: int | None = None,
+        max_requests: int | None = None,
+        time_limit: float | None = None,
+    ) -> None:
         self.started_at: float = time.monotonic()
         self.request_count: int = 0
         self.page_count: int = 0
@@ -44,11 +52,11 @@ class OperationContext:
     # ------------------------------------------------------------------
 
     def record_request(self) -> None:
-        'increment request_count after an http attempt is issued'
+        "increment request_count after an http attempt is issued"
         self.request_count += 1
 
     def record_page(self) -> None:
-        'increment page_count after all callbacks for a page have completed'
+        "increment page_count after all callbacks for a page have completed"
         self.page_count += 1
 
     # ------------------------------------------------------------------
@@ -59,7 +67,7 @@ class OperationContext:
         return time.monotonic() - self.started_at
 
     def check_deadline(self) -> None:
-        '''raise DeadlineExceeded if time_limit is set and elapsed >= limit'''
+        """raise DeadlineExceeded if time_limit is set and elapsed >= limit"""
         if self.time_limit is None:
             return
         e = self.elapsed()
@@ -67,7 +75,7 @@ class OperationContext:
             raise DeadlineExceeded(limit=self.time_limit, elapsed=e)
 
     def check_max_requests(self) -> StopSignal | None:
-        '''return StopSignal if the next attempt would exceed max_requests'''
+        """return StopSignal if the next attempt would exceed max_requests"""
         if self.max_requests is None:
             return None
         if self.request_count >= self.max_requests:
@@ -79,7 +87,7 @@ class OperationContext:
         return None
 
     def check_max_pages(self) -> StopSignal | None:
-        '''return StopSignal if the next page fetch would exceed max_pages'''
+        """return StopSignal if the next page fetch would exceed max_pages"""
         if self.max_pages is None:
             return None
         if self.page_count >= self.max_pages:

@@ -9,26 +9,28 @@ pagination details should be confirmed against your own instance's
 from rest_fetcher import APIClient
 from rest_fetcher import SchemaBuilder
 
-client = APIClient({
-    'base_url': 'https://glpi.example.com/api.php/v2',
-    'auth': {
-        'type': 'oauth2_password',
-        'token_url': 'https://glpi.example.com/api.php/token',
-        'client_id': 'my-client-id',
-        'client_secret': 'my-client-secret',
-        'username': 'glpi-api-user',
-        'password': 'correct horse battery staple',
-        'scope': 'api',
-    },
-    'endpoints': {
-        # Single-item reads are a safe starting point when you do not yet have
-        # your instance's OpenAPI doc handy.
-        'ticket': {
-            'method': 'GET',
-            'path': '/Ticket/{ticket_id}',
+client = APIClient(
+    {
+        'base_url': 'https://glpi.example.com/api.php/v2',
+        'auth': {
+            'type': 'oauth2_password',
+            'token_url': 'https://glpi.example.com/api.php/token',
+            'client_id': 'my-client-id',
+            'client_secret': 'my-client-secret',
+            'username': 'glpi-api-user',
+            'password': 'correct horse battery staple',
+            'scope': 'api',
+        },
+        'endpoints': {
+            # Single-item reads are a safe starting point when you do not yet have
+            # your instance's OpenAPI doc handy.
+            'ticket': {
+                'method': 'GET',
+                'path': '/Ticket/{ticket_id}',
+            },
         },
     }
-})
+)
 
 # Read one ticket. path_params fills the {ticket_id} placeholder.
 ticket = client.fetch('ticket', path_params={'ticket_id': 123})

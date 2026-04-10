@@ -5,12 +5,12 @@
 # and events/rate-limit each have a dedicated domain file — prefer those.
 # If a test spans multiple areas, place it where the primary assertion belongs.
 
-'''
+"""
 core test suite for rest_fetcher.
 uses stdlib unittest only — no external dependencies.
 all http calls are intercepted via mock, no real network access.
 run with: pytest -q
-'''
+"""
 
 import json
 import os
@@ -59,196 +59,238 @@ def outcome(parsed, request_kwargs=None, headers=None):
 
 
 def make_response(status=200, body=None, headers=None):
-    'builds a mock requests.Response'
+    "builds a mock requests.Response"
     r = MagicMock()
     r.status_code = status
-    r.ok = (status < 400)
+    r.ok = status < 400
     r.url = 'https://api.example.com/v1/test'
     r.headers = headers or {}
     r.json.return_value = body or {}
     r.text = json.dumps(body or {})
     return r
 
+
 def simple_schema(**endpoint_overrides):
-    'minimal valid schema for a single endpoint'
+    "minimal valid schema for a single endpoint"
     endpoint = {'method': 'GET', 'path': '/test'}
     endpoint.update(endpoint_overrides)
-    return {
-        'base_url': 'https://api.example.com/v1',
-        'endpoints': {'test': endpoint}
-    }
+    return {'base_url': 'https://api.example.com/v1', 'endpoints': {'test': endpoint}}
 
 
 class TestEndpointInheritedValidation(unittest.TestCase):
-
     def test_session_config_verify_false_is_accepted(self):
         # should not raise
-        validate({
-            'base_url': 'https://api.example.com/v1',
-            'session_config': {'verify': False},
-            'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
-        })
+        validate(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'session_config': {'verify': False},
+                'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
+            }
+        )
 
     def test_session_config_unknown_key_raises(self):
         with self.assertRaises(SchemaError) as ctx:
-            validate({
-                'base_url': 'https://api.example.com/v1',
-                'session_config': {'pool_size': 10},
-                'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
-            })
+            validate(
+                {
+                    'base_url': 'https://api.example.com/v1',
+                    'session_config': {'pool_size': 10},
+                    'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
+                }
+            )
         self.assertIn('pool_size', str(ctx.exception))
         self.assertIn('session_config', str(ctx.exception))
 
     def test_session_config_bad_verify_type_raises(self):
         with self.assertRaises(SchemaError) as ctx:
-            validate({
-                'base_url': 'https://api.example.com/v1',
-                'session_config': {'verify': 123},
-                'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
-            })
+            validate(
+                {
+                    'base_url': 'https://api.example.com/v1',
+                    'session_config': {'verify': 123},
+                    'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
+                }
+            )
         self.assertIn('verify', str(ctx.exception))
 
     def test_session_config_proxies_applied_to_session(self):
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'session_config': {'proxies': {'https': 'http://proxy.internal:8080'}},
-            'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
-        })
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'session_config': {'proxies': {'https': 'http://proxy.internal:8080'}},
+                'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
+            }
+        )
         self.assertEqual(client._session.proxies.get('https'), 'http://proxy.internal:8080')
 
-
     def test_session_config_verify_applied_to_session(self):
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'session_config': {'verify': False},
-            'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
-        })
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'session_config': {'verify': False},
+                'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
+            }
+        )
         self.assertIs(client._session.verify, False)
 
     def test_session_config_cert_applied_to_session(self):
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'session_config': {'cert': ('/tmp/client.crt', '/tmp/client.key')},
-            'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
-        })
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'session_config': {'cert': ('/tmp/client.crt', '/tmp/client.key')},
+                'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
+            }
+        )
         self.assertEqual(client._session.cert, ('/tmp/client.crt', '/tmp/client.key'))
 
     def test_session_config_max_redirects_applied(self):
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'session_config': {'max_redirects': 5},
-            'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
-        })
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'session_config': {'max_redirects': 5},
+                'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
+            }
+        )
         self.assertEqual(client._session.max_redirects, 5)
 
     def test_strict_mode_rejects_typo_in_root(self):
         with self.assertRaises(SchemaError) as ctx:
-            validate({
-                'base_url': 'https://api.example.com/v1',
-                'on_requets': lambda req, state: req,   # typo
-                'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
-            }, strict=True)
+            validate(
+                {
+                    'base_url': 'https://api.example.com/v1',
+                    'on_requets': lambda req, state: req,  # typo
+                    'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
+                },
+                strict=True,
+            )
         self.assertIn('on_requets', str(ctx.exception))
 
     def test_strict_mode_rejects_typo_in_endpoint(self):
         with self.assertRaises(SchemaError) as ctx:
-            validate({
-                'base_url': 'https://api.example.com/v1',
-                'endpoints': {'ep': {'method': 'GET', 'path': '/x', 'on_respnse': lambda x, s: x}},
-            }, strict=True)
+            validate(
+                {
+                    'base_url': 'https://api.example.com/v1',
+                    'endpoints': {
+                        'ep': {'method': 'GET', 'path': '/x', 'on_respnse': lambda x, s: x}
+                    },
+                },
+                strict=True,
+            )
         self.assertIn('on_respnse', str(ctx.exception))
 
     def test_strict_mode_passes_with_known_keys(self):
         # should not raise
-        validate({
-            'base_url': 'https://api.example.com/v1',
-            'on_request': lambda req, state: req,
-            'endpoints': {'ep': {'method': 'GET', 'path': '/x', 'on_response': lambda p, s: p}},
-        }, strict=True)
+        validate(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'on_request': lambda req, state: req,
+                'endpoints': {'ep': {'method': 'GET', 'path': '/x', 'on_response': lambda p, s: p}},
+            },
+            strict=True,
+        )
 
     def test_non_strict_mode_ignores_unknown_keys(self):
         # default behaviour — unknown keys silently pass
-        validate({
-            'base_url': 'https://api.example.com/v1',
-            'unknown_future_key': True,
-            'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
-        })
+        validate(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'unknown_future_key': True,
+                'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
+            }
+        )
 
     def test_top_level_files_is_rejected(self):
         with self.assertRaises(SchemaError):
-            validate({
-                'base_url': 'https://api.example.com/v1',
-                'files': {'upload': b'data'},
-                'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
-            })
+            validate(
+                {
+                    'base_url': 'https://api.example.com/v1',
+                    'files': {'upload': b'data'},
+                    'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
+                }
+            )
 
     def test_rate_limit_exceeded_is_a_rate_limit_error(self):
         from rest_fetcher.exceptions import RateLimitExceeded, RateLimitError
+
         self.assertTrue(issubclass(RateLimitExceeded, RateLimitError))
         with self.assertRaises(RateLimitError):
             raise RateLimitExceeded('too fast')
 
-
     def test_endpoint_on_request_must_be_callable(self):
         with self.assertRaises(SchemaError):
-            validate({
-                'base_url': 'https://api.example.com/v1',
-                'endpoints': {'ep': {'method': 'GET', 'path': '/x', 'on_request': 123}},
-            })
+            validate(
+                {
+                    'base_url': 'https://api.example.com/v1',
+                    'endpoints': {'ep': {'method': 'GET', 'path': '/x', 'on_request': 123}},
+                }
+            )
 
     def test_client_on_request_must_be_callable(self):
         with self.assertRaises(SchemaError):
-            validate({
-                'base_url': 'https://api.example.com/v1',
-                'on_request': 123,
-                'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
-            })
+            validate(
+                {
+                    'base_url': 'https://api.example.com/v1',
+                    'on_request': 123,
+                    'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
+                }
+            )
 
     def test_endpoint_response_parser_must_be_callable(self):
         with self.assertRaises(SchemaError):
-            validate({
-                'base_url': 'https://api.example.com/v1',
-                'endpoints': {'ep': {'method': 'GET', 'path': '/x', 'response_parser': 123}}
-            })
+            validate(
+                {
+                    'base_url': 'https://api.example.com/v1',
+                    'endpoints': {'ep': {'method': 'GET', 'path': '/x', 'response_parser': 123}},
+                }
+            )
 
     def test_endpoint_canonical_parser_must_be_callable(self):
         with self.assertRaises(SchemaError):
-            validate({
-                'base_url': 'https://api.example.com/v1',
-                'endpoints': {'ep': {'method': 'GET', 'path': '/x', 'canonical_parser': 123}}
-            })
+            validate(
+                {
+                    'base_url': 'https://api.example.com/v1',
+                    'endpoints': {'ep': {'method': 'GET', 'path': '/x', 'canonical_parser': 123}},
+                }
+            )
 
     def test_endpoint_csv_delimiter_must_be_single_character(self):
         with self.assertRaises(SchemaError):
-            validate({
-                'base_url': 'https://api.example.com/v1',
-                'endpoints': {'ep': {'method': 'GET', 'path': '/x', 'csv_delimiter': ';;'}}
-            })
+            validate(
+                {
+                    'base_url': 'https://api.example.com/v1',
+                    'endpoints': {'ep': {'method': 'GET', 'path': '/x', 'csv_delimiter': ';;'}},
+                }
+            )
 
     def test_endpoint_encoding_must_be_non_empty(self):
         with self.assertRaises(SchemaError):
-            validate({
-                'base_url': 'https://api.example.com/v1',
-                'endpoints': {'ep': {'method': 'GET', 'path': '/x', 'encoding': ''}}
-            })
+            validate(
+                {
+                    'base_url': 'https://api.example.com/v1',
+                    'endpoints': {'ep': {'method': 'GET', 'path': '/x', 'encoding': ''}},
+                }
+            )
 
     def test_endpoint_scrub_headers_must_be_list_of_strings(self):
         with self.assertRaises(SchemaError):
-            validate({
-                'base_url': 'https://api.example.com/v1',
-                'endpoints': {'ep': {'method': 'GET', 'path': '/x', 'scrub_headers': [123]}}
-            })
+            validate(
+                {
+                    'base_url': 'https://api.example.com/v1',
+                    'endpoints': {'ep': {'method': 'GET', 'path': '/x', 'scrub_headers': [123]}},
+                }
+            )
 
     def test_endpoint_scrub_query_params_must_be_list_of_strings(self):
         with self.assertRaises(SchemaError):
-            validate({
-                'base_url': 'https://api.example.com/v1',
-                'endpoints': {'ep': {'method': 'GET', 'path': '/x', 'scrub_query_params': [123]}}
-            })
+            validate(
+                {
+                    'base_url': 'https://api.example.com/v1',
+                    'endpoints': {
+                        'ep': {'method': 'GET', 'path': '/x', 'scrub_query_params': [123]}
+                    },
+                }
+            )
 
 
 class TestExceptions(unittest.TestCase):
-
     def test_raise_with_string_raises_response_error(self):
         with self.assertRaises(ResponseError) as ctx:
             raise_('something went wrong')
@@ -282,8 +324,8 @@ class TestExceptions(unittest.TestCase):
         e = ResponseError('bad body', raw='<html>error</html>')
         self.assertEqual(e.raw, '<html>error</html>')
 
-class TestMergeDicts(unittest.TestCase):
 
+class TestMergeDicts(unittest.TestCase):
     def test_shallow_merge_override(self):
         result = merge_dicts({'a': 1, 'b': 2}, {'b': 99, 'c': 3})
         self.assertEqual(result, {'a': 1, 'b': 99, 'c': 3})
@@ -292,11 +334,14 @@ class TestMergeDicts(unittest.TestCase):
         base = {'headers': {'Accept': 'application/json', 'X-Foo': 'bar'}}
         override = {'headers': {'Authorization': 'Bearer x'}}
         result = merge_dicts(base, override)
-        self.assertEqual(result['headers'], {
-            'Accept': 'application/json',
-            'X-Foo': 'bar',
-            'Authorization': 'Bearer x',
-        })
+        self.assertEqual(
+            result['headers'],
+            {
+                'Accept': 'application/json',
+                'X-Foo': 'bar',
+                'Authorization': 'Bearer x',
+            },
+        )
 
     def test_override_wins_on_conflict(self):
         result = merge_dicts({'headers': {'Accept': 'json'}}, {'headers': {'Accept': 'xml'}})
@@ -335,22 +380,22 @@ class TestMergeDicts(unittest.TestCase):
         self.assertNotIn('filter', override['params'])
 
     def test_merge_preserves_sticky_params(self):
-        base     = {'params': {'page': 1, 'filter': 'active', 'limit': 10}}
+        base = {'params': {'page': 1, 'filter': 'active', 'limit': 10}}
         override = {'params': {'page': 2}}
-        result   = merge_dicts(base, override)
+        result = merge_dicts(base, override)
         self.assertEqual(result['params']['page'], 2)
         self.assertEqual(result['params']['filter'], 'active')
         self.assertEqual(result['params']['limit'], 10)
 
     def test_merge_three_levels_deep(self):
-        base     = {'a': {'b': {'c': 1, 'd': 2}}}
+        base = {'a': {'b': {'c': 1, 'd': 2}}}
         override = {'a': {'b': {'c': 99}}}
-        result   = merge_dicts(base, override)
+        result = merge_dicts(base, override)
         self.assertEqual(result['a']['b']['c'], 99)
         self.assertEqual(result['a']['b']['d'], 2)
 
-class TestClientStateWiring(unittest.TestCase):
 
+class TestClientStateWiring(unittest.TestCase):
     def test_state_seeded_from_schema(self):
         client = APIClient({**simple_schema(), 'state': {'api_key': 'abc', 'region': 'eu'}})
         self.assertEqual(client._state['api_key'], 'abc')
@@ -369,11 +414,13 @@ class TestClientStateWiring(unittest.TestCase):
 
         with patch('requests.Session.request') as mock_req:
             mock_req.return_value = make_response(200, {'ok': True})
-            client = APIClient({
-                **simple_schema(),
-                'state': {'token': 'secret-123'},
-                'auth': {'type': 'callback', 'handler': auth_handler}
-            })
+            client = APIClient(
+                {
+                    **simple_schema(),
+                    'state': {'token': 'secret-123'},
+                    'auth': {'type': 'callback', 'handler': auth_handler},
+                }
+            )
             client.fetch('test')
 
         self.assertEqual(received_state.get('token'), 'secret-123')
@@ -385,10 +432,11 @@ class TestClientStateWiring(unittest.TestCase):
 
         with patch('requests.Session.request') as mock_req:
             mock_req.return_value = make_response(200, {'ok': True})
-            client = APIClient({**simple_schema(), 'auth': {'type': 'callback', 'handler': auth_handler}})
+            client = APIClient(
+                {**simple_schema(), 'auth': {'type': 'callback', 'handler': auth_handler}}
+            )
             with self.assertRaises(TypeError):
                 client.fetch('test')
-
 
     def test_bearer_token_callback_receives_config_keys(self):
         seen = {}
@@ -399,11 +447,13 @@ class TestClientStateWiring(unittest.TestCase):
 
         with patch('requests.Session.request') as mock_req:
             mock_req.return_value = make_response(200, {'ok': True})
-            client = APIClient({
-                **simple_schema(),
-                'state': {'param_name': 'MY_TOKEN_PARAM', 'region': 'eu-west-1'},
-                'auth': {'type': 'bearer', 'token_callback': token_callback},
-            })
+            client = APIClient(
+                {
+                    **simple_schema(),
+                    'state': {'param_name': 'MY_TOKEN_PARAM', 'region': 'eu-west-1'},
+                    'auth': {'type': 'bearer', 'token_callback': token_callback},
+                }
+            )
             client.fetch('test')
 
         self.assertEqual(seen.get('param_name'), 'MY_TOKEN_PARAM')
@@ -416,15 +466,17 @@ class TestClientStateWiring(unittest.TestCase):
 
         with patch('requests.Session.request') as mock_req:
             mock_req.return_value = make_response(200, {'ok': True})
-            client = APIClient({
-                **simple_schema(),
-                'auth': {'type': 'bearer', 'token_callback': token_callback},
-            })
+            client = APIClient(
+                {
+                    **simple_schema(),
+                    'auth': {'type': 'bearer', 'token_callback': token_callback},
+                }
+            )
             with self.assertRaises(TypeError):
                 client.fetch('test')
 
-class TestSchemaValidation(unittest.TestCase):
 
+class TestSchemaValidation(unittest.TestCase):
     def test_valid_minimal_schema_passes(self):
         schema = simple_schema()
         result = validate(schema)
@@ -446,12 +498,12 @@ class TestSchemaValidation(unittest.TestCase):
 
     def test_invalid_method_raises(self):
         with self.assertRaises(SchemaError) as ctx:
-            validate(simple_schema(method='BREW'))   # not a real HTTP method
+            validate(simple_schema(method='BREW'))  # not a real HTTP method
         self.assertIn('method', str(ctx.exception))
 
     def test_valid_methods_accepted(self):
         for method in ('GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'):
-            validate(simple_schema(method=method))   # should not raise
+            validate(simple_schema(method=method))  # should not raise
 
     def test_invalid_log_level_raises(self):
         with self.assertRaises(SchemaError):
@@ -477,31 +529,48 @@ class TestSchemaValidation(unittest.TestCase):
 
     def test_oauth2_missing_key_raises(self):
         with self.assertRaises(SchemaError):
-            validate({**simple_schema(), 'auth': {
-                'type': 'oauth2', 'token_url': 'x', 'client_id': 'y'
-                # missing client_secret
-            }})
+            validate(
+                {
+                    **simple_schema(),
+                    'auth': {
+                        'type': 'oauth2',
+                        'token_url': 'x',
+                        'client_id': 'y',
+                        # missing client_secret
+                    },
+                }
+            )
 
     def test_oauth2_password_missing_key_raises(self):
         with self.assertRaises(SchemaError):
-            validate({**simple_schema(), 'auth': {
-                'type': 'oauth2_password',
-                'token_url': 'x',
-                'client_id': 'y',
-                'client_secret': 'z',
-                'username': 'u',
-                # missing password
-            }})
+            validate(
+                {
+                    **simple_schema(),
+                    'auth': {
+                        'type': 'oauth2_password',
+                        'token_url': 'x',
+                        'client_id': 'y',
+                        'client_secret': 'z',
+                        'username': 'u',
+                        # missing password
+                    },
+                }
+            )
 
     def test_oauth2_password_passes(self):
-        validate({**simple_schema(), 'auth': {
-            'type': 'oauth2_password',
-            'token_url': 'x',
-            'client_id': 'y',
-            'client_secret': 'z',
-            'username': 'u',
-            'password': 'p',
-        }})
+        validate(
+            {
+                **simple_schema(),
+                'auth': {
+                    'type': 'oauth2_password',
+                    'token_url': 'x',
+                    'client_id': 'y',
+                    'client_secret': 'z',
+                    'username': 'u',
+                    'password': 'p',
+                },
+            }
+        )
 
     def test_invalid_retry_max_attempts_raises(self):
         with self.assertRaises(SchemaError):
@@ -528,13 +597,13 @@ class TestSchemaValidation(unittest.TestCase):
         with self.assertRaises(SchemaError):
             validate(simple_schema(mock='not_valid'))
 
-class TestResolveEndpoint(unittest.TestCase):
 
+class TestResolveEndpoint(unittest.TestCase):
     def test_inherits_client_headers(self):
         schema = {
             'base_url': 'https://x.com',
             'headers': {'Accept': 'application/json'},
-            'endpoints': {'ep': {'method': 'GET'}}
+            'endpoints': {'ep': {'method': 'GET'}},
         }
         resolved = resolve_endpoint(schema, 'ep')
         self.assertEqual(resolved['headers']['Accept'], 'application/json')
@@ -543,7 +612,7 @@ class TestResolveEndpoint(unittest.TestCase):
         schema = {
             'base_url': 'https://x.com',
             'headers': {'Accept': 'application/json', 'X-Foo': 'bar'},
-            'endpoints': {'ep': {'headers': {'Authorization': 'Bearer x'}}}
+            'endpoints': {'ep': {'headers': {'Authorization': 'Bearer x'}}},
         }
         resolved = resolve_endpoint(schema, 'ep')
         self.assertEqual(resolved['headers']['Accept'], 'application/json')
@@ -576,7 +645,7 @@ class TestResolveEndpoint(unittest.TestCase):
         schema = {
             'base_url': 'https://x.com',
             'pagination': {'next_request': lambda r, s: None},
-            'endpoints': {'ep': {}}
+            'endpoints': {'ep': {}},
         }
         resolved = resolve_endpoint(schema, 'ep')
         self.assertIsNotNone(resolved['pagination'])
@@ -585,7 +654,7 @@ class TestResolveEndpoint(unittest.TestCase):
         schema = {
             'base_url': 'https://x.com',
             'pagination': {'next_request': lambda r, s: None},
-            'endpoints': {'ep': {'pagination': None}}
+            'endpoints': {'ep': {'pagination': None}},
         }
         resolved = resolve_endpoint(schema, 'ep')
         self.assertIsNone(resolved['pagination'])
@@ -650,7 +719,7 @@ class TestResolveEndpoint(unittest.TestCase):
             resolve_endpoint(schema, 'nonexistent')
 
     def test_unreplaced_path_placeholder_logs_warning(self):
-        'forgetting path_params leaves {id} in URL — library warns rather than silently sending bad request'
+        "forgetting path_params leaves {id} in URL — library warns rather than silently sending bad request"
         schema = {
             'base_url': 'https://api.example.com/v1',
             'endpoints': {'ep': {'method': 'GET', 'path': '/users/{id}'}},
@@ -658,102 +727,127 @@ class TestResolveEndpoint(unittest.TestCase):
         with patch('requests.Session.request') as m:
             m.return_value = make_response(200, {})
             with self.assertLogs('rest_fetcher.client', level='WARNING') as log:
-                APIClient(schema).fetch('ep')   # no path_params supplied
+                APIClient(schema).fetch('ep')  # no path_params supplied
         self.assertTrue(any('id' in msg and 'placeholder' in msg for msg in log.output))
 
     def test_pagination_missing_next_request_raises(self):
-        'next_request is required — omitting it would cause an infinite loop'
+        "next_request is required — omitting it would cause an infinite loop"
         with self.assertRaises(SchemaError) as ctx:
-            validate({
-                'base_url': 'https://x.com',
-                'endpoints': {'ep': {'pagination': {'delay': 0.1}}}
-            })
+            validate(
+                {'base_url': 'https://x.com', 'endpoints': {'ep': {'pagination': {'delay': 0.1}}}}
+            )
         self.assertIn('next_request', str(ctx.exception))
 
     def test_pagination_next_request_not_callable_raises(self):
         with self.assertRaises(SchemaError) as ctx:
-            validate({
-                'base_url': 'https://x.com',
-                'endpoints': {'ep': {'pagination': {'next_request': 'not-a-callable'}}}
-            })
+            validate(
+                {
+                    'base_url': 'https://x.com',
+                    'endpoints': {'ep': {'pagination': {'next_request': 'not-a-callable'}}},
+                }
+            )
         self.assertIn('next_request', str(ctx.exception))
 
     def test_pagination_on_page_not_callable_raises(self):
         with self.assertRaises(SchemaError) as ctx:
-            validate({
-                'base_url': 'https://x.com',
-                'endpoints': {'ep': {
-                    'pagination': {
-                        'next_request': lambda r, s: None,
+            validate(
+                {
+                    'base_url': 'https://x.com',
+                    'endpoints': {
+                        'ep': {
+                            'pagination': {
+                                'next_request': lambda r, s: None,
+                            },
+                            'on_page': 'not-a-callable',
+                        }
                     },
-                    'on_page': 'not-a-callable',
-                }}
-            })
+                }
+            )
         self.assertIn('on_page', str(ctx.exception))
 
     def test_pagination_initial_params_not_dict_raises(self):
         with self.assertRaises(SchemaError) as ctx:
-            validate({
-                'base_url': 'https://x.com',
-                'endpoints': {'ep': {'pagination': {
-                    'next_request': lambda r, s: None,
-                    'initial_params': 'not-a-dict',
-                }}}
-            })
+            validate(
+                {
+                    'base_url': 'https://x.com',
+                    'endpoints': {
+                        'ep': {
+                            'pagination': {
+                                'next_request': lambda r, s: None,
+                                'initial_params': 'not-a-dict',
+                            }
+                        }
+                    },
+                }
+            )
         self.assertIn('initial_params', str(ctx.exception))
 
     def test_pagination_none_disables_without_requiring_next_request(self):
-        'pagination=None is valid even though next_request is absent'
-        validate({
-            'base_url': 'https://x.com',
-            'endpoints': {'ep': {'pagination': None}}
-        })
+        "pagination=None is valid even though next_request is absent"
+        validate({'base_url': 'https://x.com', 'endpoints': {'ep': {'pagination': None}}})
 
     def test_endpoint_all_optional_callbacks_validated(self):
-        'all optional lifecycle callbacks at endpoint level are checked for callability'
+        "all optional lifecycle callbacks at endpoint level are checked for callability"
         for key in ('on_response', 'on_page', 'update_state', 'on_complete', 'on_page_complete'):
             with self.assertRaises(SchemaError) as ctx:
-                validate({
-                    'base_url': 'https://x.com',
-                    'endpoints': {'ep': {
-                        'pagination': {'next_request': lambda r, s: None},
-                        key: 'not-callable',
-                    }}
-                })
+                validate(
+                    {
+                        'base_url': 'https://x.com',
+                        'endpoints': {
+                            'ep': {
+                                'pagination': {'next_request': lambda r, s: None},
+                                key: 'not-callable',
+                            }
+                        },
+                    }
+                )
             self.assertIn(key, str(ctx.exception), f'{key} not mentioned in error')
 
     # --- helper-marker regression tests: three-way seam ---
 
     def test_helper_dict_passes_validation_with_lifecycle_hooks(self):
-        'built-in helpers include on_response and pass validation because of _rf_pagination_helper marker'
-        validate({
-            'base_url': 'https://x.com',
-            'endpoints': {'ep': {'pagination': offset_pagination(data_path='items')}},
-        }, strict=True)
+        "built-in helpers include on_response and pass validation because of _rf_pagination_helper marker"
+        validate(
+            {
+                'base_url': 'https://x.com',
+                'endpoints': {'ep': {'pagination': offset_pagination(data_path='items')}},
+            },
+            strict=True,
+        )
 
     def test_raw_user_dict_rejects_lifecycle_hooks_in_pagination(self):
-        'raw pagination dicts without the helper marker reject lifecycle hooks with a redirecting message'
+        "raw pagination dicts without the helper marker reject lifecycle hooks with a redirecting message"
         for key in ('on_response', 'on_page', 'on_complete', 'on_page_complete', 'update_state'):
             with self.assertRaises(SchemaError) as ctx:
-                validate({
-                    'base_url': 'https://x.com',
-                    'endpoints': {'ep': {'pagination': {
-                        'next_request': lambda r, s: None,
-                        key: lambda *a: None,
-                    }}},
-                })
+                validate(
+                    {
+                        'base_url': 'https://x.com',
+                        'endpoints': {
+                            'ep': {
+                                'pagination': {
+                                    'next_request': lambda r, s: None,
+                                    key: lambda *a: None,
+                                }
+                            }
+                        },
+                    }
+                )
             self.assertIn('at endpoint level instead', str(ctx.exception))
 
     def test_explicit_endpoint_none_suppresses_helper_hook(self):
-        'endpoint-level on_response=None suppresses the helper-provided on_response'
-        client = APIClient({
-            **simple_schema(),
-            'endpoints': {'ep': {
-                'mock': [{'items': [1, 2]}],
-                'pagination': offset_pagination(data_path='items'),
-                'on_response': None,
-            }},
-        })
+        "endpoint-level on_response=None suppresses the helper-provided on_response"
+        client = APIClient(
+            {
+                **simple_schema(),
+                'endpoints': {
+                    'ep': {
+                        'mock': [{'items': [1, 2]}],
+                        'pagination': offset_pagination(data_path='items'),
+                        'on_response': None,
+                    }
+                },
+            }
+        )
         result = client.fetch('ep')
         # with on_response=None, raw parsed response is returned (not items extracted)
         # single page, no on_complete, so fetch returns the raw dict directly
@@ -763,7 +857,6 @@ class TestResolveEndpoint(unittest.TestCase):
 
 
 class TestAuth(unittest.TestCase):
-
     def test_bearer_injects_header(self):
         handler = build_auth_handler({'type': 'bearer', 'token': 'abc123'})
         result = handler.apply({'headers': {}})
@@ -787,6 +880,7 @@ class TestAuth(unittest.TestCase):
     def test_callback_auth_invokes_handler(self):
         def my_auth(req, config):
             return {**req, 'headers': {'X-Key': 'secret'}}
+
         handler = build_auth_handler({'type': 'callback', 'handler': my_auth})
         result = handler.apply({})
         self.assertEqual(result['headers']['X-Key'], 'secret')
@@ -800,100 +894,129 @@ class TestAuth(unittest.TestCase):
         self.assertIsNone(build_auth_handler(None))
 
     def test_oauth2_fetches_token_on_first_call(self):
-        handler = build_auth_handler({
-            'type': 'oauth2',
-            'token_url': 'https://auth.example.com/token',
-            'client_id': 'id',
-            'client_secret': 'secret',
-        })
+        handler = build_auth_handler(
+            {
+                'type': 'oauth2',
+                'token_url': 'https://auth.example.com/token',
+                'client_id': 'id',
+                'client_secret': 'secret',
+            }
+        )
         with patch('requests.post') as mock_post:
-            mock_post.return_value = make_response(200, {'access_token': 'tok1', 'expires_in': 3600})
+            mock_post.return_value = make_response(
+                200, {'access_token': 'tok1', 'expires_in': 3600}
+            )
             result = handler.apply({'headers': {}})
         self.assertEqual(result['headers']['Authorization'], 'Bearer tok1')
         self.assertEqual(mock_post.call_count, 1)
 
     def test_oauth2_reuses_cached_token(self):
-        'second call within expiry window must not re-fetch'
-        handler = build_auth_handler({
-            'type': 'oauth2',
-            'token_url': 'https://auth.example.com/token',
-            'client_id': 'id',
-            'client_secret': 'secret',
-        })
+        "second call within expiry window must not re-fetch"
+        handler = build_auth_handler(
+            {
+                'type': 'oauth2',
+                'token_url': 'https://auth.example.com/token',
+                'client_id': 'id',
+                'client_secret': 'secret',
+            }
+        )
         with patch('requests.post') as mock_post:
-            mock_post.return_value = make_response(200, {'access_token': 'tok1', 'expires_in': 3600})
+            mock_post.return_value = make_response(
+                200, {'access_token': 'tok1', 'expires_in': 3600}
+            )
             handler.apply({'headers': {}})
             handler.apply({'headers': {}})
         self.assertEqual(mock_post.call_count, 1, 'token should be cached')
 
     def test_oauth2_uses_schema_timeout(self):
-        'schema timeout is passed to the OAuth2 token fetch, not hardcoded'
+        "schema timeout is passed to the OAuth2 token fetch, not hardcoded"
         with patch('requests.post') as mock_post:
             mock_post.return_value = make_response(200, {'access_token': 'tok', 'expires_in': 3600})
             handler = build_auth_handler(
-                {'type': 'oauth2', 'token_url': 'https://auth.example.com/token',
-                 'client_id': 'id', 'client_secret': 'secret'},
-                timeout=5
+                {
+                    'type': 'oauth2',
+                    'token_url': 'https://auth.example.com/token',
+                    'client_id': 'id',
+                    'client_secret': 'secret',
+                },
+                timeout=5,
             )
             handler.apply({'headers': {}})
         _, kwargs = mock_post.call_args
         self.assertEqual(kwargs.get('timeout'), 5)
 
     def test_oauth2_refreshes_expired_token(self):
-        'once expiry_margin kicks in, next call must re-fetch'
-        handler = build_auth_handler({
-            'type': 'oauth2',
-            'token_url': 'https://auth.example.com/token',
-            'client_id': 'id',
-            'client_secret': 'secret',
-            'expiry_margin': 60,
-        })
+        "once expiry_margin kicks in, next call must re-fetch"
+        handler = build_auth_handler(
+            {
+                'type': 'oauth2',
+                'token_url': 'https://auth.example.com/token',
+                'client_id': 'id',
+                'client_secret': 'secret',
+                'expiry_margin': 60,
+            }
+        )
         with patch('requests.post') as mock_post:
-            mock_post.return_value = make_response(200, {'access_token': 'tok1', 'expires_in': 3600})
+            mock_post.return_value = make_response(
+                200, {'access_token': 'tok1', 'expires_in': 3600}
+            )
             handler.apply({'headers': {}})
         # force expiry
         handler._expires_at = 0
         with patch('requests.post') as mock_post2:
-            mock_post2.return_value = make_response(200, {'access_token': 'tok2', 'expires_in': 3600})
+            mock_post2.return_value = make_response(
+                200, {'access_token': 'tok2', 'expires_in': 3600}
+            )
             result = handler.apply({'headers': {}})
         self.assertEqual(result['headers']['Authorization'], 'Bearer tok2')
         self.assertEqual(mock_post2.call_count, 1)
 
     def test_oauth2_password_fetches_token_on_first_call(self):
-        handler = build_auth_handler({
-            'type': 'oauth2_password',
-            'token_url': 'https://auth.example.com/token',
-            'client_id': 'id',
-            'client_secret': 'secret',
-            'username': 'alice',
-            'password': 'wonderland',
-            'scope': 'api',
-        })
+        handler = build_auth_handler(
+            {
+                'type': 'oauth2_password',
+                'token_url': 'https://auth.example.com/token',
+                'client_id': 'id',
+                'client_secret': 'secret',
+                'username': 'alice',
+                'password': 'wonderland',
+                'scope': 'api',
+            }
+        )
         with patch('requests.post') as mock_post:
-            mock_post.return_value = make_response(200, {'access_token': 'tok1', 'expires_in': 3600})
+            mock_post.return_value = make_response(
+                200, {'access_token': 'tok1', 'expires_in': 3600}
+            )
             result = handler.apply({'headers': {}})
         self.assertEqual(result['headers']['Authorization'], 'Bearer tok1')
         _, kwargs = mock_post.call_args
-        self.assertEqual(kwargs['data'], {
-            'grant_type': 'password',
-            'client_id': 'id',
-            'client_secret': 'secret',
-            'username': 'alice',
-            'password': 'wonderland',
-            'scope': 'api',
-        })
+        self.assertEqual(
+            kwargs['data'],
+            {
+                'grant_type': 'password',
+                'client_id': 'id',
+                'client_secret': 'secret',
+                'username': 'alice',
+                'password': 'wonderland',
+                'scope': 'api',
+            },
+        )
 
     def test_oauth2_password_omits_scope_when_not_set(self):
-        handler = build_auth_handler({
-            'type': 'oauth2_password',
-            'token_url': 'https://auth.example.com/token',
-            'client_id': 'id',
-            'client_secret': 'secret',
-            'username': 'alice',
-            'password': 'wonderland',
-        })
+        handler = build_auth_handler(
+            {
+                'type': 'oauth2_password',
+                'token_url': 'https://auth.example.com/token',
+                'client_id': 'id',
+                'client_secret': 'secret',
+                'username': 'alice',
+                'password': 'wonderland',
+            }
+        )
         with patch('requests.post') as mock_post:
-            mock_post.return_value = make_response(200, {'access_token': 'tok1', 'expires_in': 3600})
+            mock_post.return_value = make_response(
+                200, {'access_token': 'tok1', 'expires_in': 3600}
+            )
             handler.apply({'headers': {}})
         _, kwargs = mock_post.call_args
         self.assertNotIn('scope', kwargs['data'])
@@ -917,64 +1040,78 @@ class TestAuth(unittest.TestCase):
         self.assertEqual(kwargs.get('timeout'), 7)
 
     def test_oauth2_password_missing_access_token_raises(self):
-        handler = build_auth_handler({
-            'type': 'oauth2_password',
-            'token_url': 'https://auth.example.com/token',
-            'client_id': 'id',
-            'client_secret': 'secret',
-            'username': 'alice',
-            'password': 'wonderland',
-        })
+        handler = build_auth_handler(
+            {
+                'type': 'oauth2_password',
+                'token_url': 'https://auth.example.com/token',
+                'client_id': 'id',
+                'client_secret': 'secret',
+                'username': 'alice',
+                'password': 'wonderland',
+            }
+        )
         with patch('requests.post') as mock_post:
             mock_post.return_value = make_response(200, {'token_type': 'Bearer'})
             with self.assertRaises(AuthError):
                 handler.apply({'headers': {}})
 
     def test_oauth2_password_reuses_cached_token(self):
-        handler = build_auth_handler({
-            'type': 'oauth2_password',
-            'token_url': 'https://auth.example.com/token',
-            'client_id': 'id',
-            'client_secret': 'secret',
-            'username': 'alice',
-            'password': 'wonderland',
-        })
+        handler = build_auth_handler(
+            {
+                'type': 'oauth2_password',
+                'token_url': 'https://auth.example.com/token',
+                'client_id': 'id',
+                'client_secret': 'secret',
+                'username': 'alice',
+                'password': 'wonderland',
+            }
+        )
         with patch('requests.post') as mock_post:
-            mock_post.return_value = make_response(200, {'access_token': 'tok1', 'expires_in': 3600})
+            mock_post.return_value = make_response(
+                200, {'access_token': 'tok1', 'expires_in': 3600}
+            )
             handler.apply({'headers': {}})
             handler.apply({'headers': {}})
         self.assertEqual(mock_post.call_count, 1)
 
     def test_oauth2_password_refreshes_expired_token(self):
-        handler = build_auth_handler({
-            'type': 'oauth2_password',
-            'token_url': 'https://auth.example.com/token',
-            'client_id': 'id',
-            'client_secret': 'secret',
-            'username': 'alice',
-            'password': 'wonderland',
-            'expiry_margin': 60,
-        })
+        handler = build_auth_handler(
+            {
+                'type': 'oauth2_password',
+                'token_url': 'https://auth.example.com/token',
+                'client_id': 'id',
+                'client_secret': 'secret',
+                'username': 'alice',
+                'password': 'wonderland',
+                'expiry_margin': 60,
+            }
+        )
         with patch('requests.post') as mock_post:
-            mock_post.return_value = make_response(200, {'access_token': 'tok1', 'expires_in': 3600})
+            mock_post.return_value = make_response(
+                200, {'access_token': 'tok1', 'expires_in': 3600}
+            )
             handler.apply({'headers': {}})
 
         handler._expires_at = 0
         with patch('requests.post') as mock_post2:
-            mock_post2.return_value = make_response(200, {'access_token': 'tok2', 'expires_in': 3600})
+            mock_post2.return_value = make_response(
+                200, {'access_token': 'tok2', 'expires_in': 3600}
+            )
             result = handler.apply({'headers': {}})
         self.assertEqual(result['headers']['Authorization'], 'Bearer tok2')
         self.assertEqual(mock_post2.call_count, 1)
 
     def test_oauth2_password_http_error_raises(self):
-        handler = build_auth_handler({
-            'type': 'oauth2_password',
-            'token_url': 'https://auth.example.com/token',
-            'client_id': 'id',
-            'client_secret': 'secret',
-            'username': 'alice',
-            'password': 'wonderland',
-        })
+        handler = build_auth_handler(
+            {
+                'type': 'oauth2_password',
+                'token_url': 'https://auth.example.com/token',
+                'client_id': 'id',
+                'client_secret': 'secret',
+                'username': 'alice',
+                'password': 'wonderland',
+            }
+        )
         with patch('requests.post') as mock_post:
             mock_post.return_value = make_response(401, {'error': 'nope'})
             mock_post.return_value.raise_for_status.side_effect = requests.HTTPError('401')
@@ -982,14 +1119,16 @@ class TestAuth(unittest.TestCase):
                 handler.apply({'headers': {}})
 
     def test_oauth2_password_invalid_json_raises(self):
-        handler = build_auth_handler({
-            'type': 'oauth2_password',
-            'token_url': 'https://auth.example.com/token',
-            'client_id': 'id',
-            'client_secret': 'secret',
-            'username': 'alice',
-            'password': 'wonderland',
-        })
+        handler = build_auth_handler(
+            {
+                'type': 'oauth2_password',
+                'token_url': 'https://auth.example.com/token',
+                'client_id': 'id',
+                'client_secret': 'secret',
+                'username': 'alice',
+                'password': 'wonderland',
+            }
+        )
         with patch('requests.post') as mock_post:
             mock_post.return_value = make_response(200, {})
             mock_post.return_value.json.side_effect = ValueError('bad json')
@@ -1014,7 +1153,6 @@ class TestAuth(unittest.TestCase):
         )
         validate(schema)
         self.assertEqual(schema['auth']['type'], 'oauth2_password')
-
 
     def test_retry_builder_supports_jitter_and_delay_fields(self):
         from rest_fetcher.types import SchemaBuilder
@@ -1056,7 +1194,9 @@ class TestAuth(unittest.TestCase):
         client = APIClient(schema)
         self.assertIsInstance(client._auth, OAuth2PasswordAuth)
         with patch('requests.post') as mock_post, patch('requests.Session.request') as mock_request:
-            mock_post.return_value = make_response(200, {'access_token': 'tok1', 'expires_in': 3600})
+            mock_post.return_value = make_response(
+                200, {'access_token': 'tok1', 'expires_in': 3600}
+            )
             mock_request.return_value = make_response(200, {'ok': True})
             client.fetch('test')
         _, kwargs = mock_request.call_args
@@ -1064,18 +1204,21 @@ class TestAuth(unittest.TestCase):
 
 
 class TestAuthConcurrency(unittest.TestCase):
-
     def test_oauth2_refresh_is_coordinated(self):
-        handler = build_auth_handler({
-            'type': 'oauth2',
-            'token_url': 'https://auth.example.com/token',
-            'client_id': 'id',
-            'client_secret': 'secret',
-        })
+        handler = build_auth_handler(
+            {
+                'type': 'oauth2',
+                'token_url': 'https://auth.example.com/token',
+                'client_id': 'id',
+                'client_secret': 'secret',
+            }
+        )
         barrier = threading.Barrier(10, timeout=5)
 
         with patch('requests.post') as mock_post:
-            mock_post.return_value = make_response(200, {'access_token': 'tok1', 'expires_in': 3600})
+            mock_post.return_value = make_response(
+                200, {'access_token': 'tok1', 'expires_in': 3600}
+            )
 
             def call_apply():
                 barrier.wait()
@@ -1091,7 +1234,6 @@ class TestAuthConcurrency(unittest.TestCase):
 
 
 class TestRunStateIsolation(unittest.TestCase):
-
     def test_concurrent_runs_do_not_share_callback_state(self):
         barrier = threading.Barrier(2, timeout=5)
         seen = {}
@@ -1146,14 +1288,20 @@ class TestRunStateIsolation(unittest.TestCase):
             m.side_effect = lambda method, url, **kwargs: responses[url]
             t1 = threading.Thread(target=do_fetch, args=('users',))
             t2 = threading.Thread(target=do_fetch, args=('orders',))
-            t1.start(); t2.start(); t1.join(); t2.join()
+            t1.start()
+            t2.start()
+            t1.join()
+            t2.join()
 
-        self.assertEqual(seen['https://api.example.com/v1/users'], 'https://api.example.com/v1/users')
-        self.assertEqual(seen['https://api.example.com/v1/orders'], 'https://api.example.com/v1/orders')
+        self.assertEqual(
+            seen['https://api.example.com/v1/users'], 'https://api.example.com/v1/users'
+        )
+        self.assertEqual(
+            seen['https://api.example.com/v1/orders'], 'https://api.example.com/v1/orders'
+        )
 
 
 class TestRequestErrorContext(unittest.TestCase):
-
     def _client(self, mock_response, on_error=None):
         schema = {
             'base_url': 'https://api.example.com/v1',
@@ -1174,7 +1322,7 @@ class TestRequestErrorContext(unittest.TestCase):
         self.assertIn('/things', exc.url)
 
     def test_fetch_attaches_context_on_non_retryable_http_error(self):
-        '400 is not in retry on_codes — goes through _handle_error_response directly'
+        "400 is not in retry on_codes — goes through _handle_error_response directly"
         with patch('requests.Session.request') as m:
             m.return_value = make_response(400, {'error': 'bad request'})
             with self.assertRaises(RequestError) as ctx:
@@ -1186,13 +1334,16 @@ class TestRequestErrorContext(unittest.TestCase):
 
     def test_stream_attaches_context_on_network_error(self):
         import requests as req_lib
+
         with patch('requests.Session.request') as m:
             m.side_effect = req_lib.ConnectionError('refused')
-            client = APIClient({
-                'base_url': 'https://api.example.com/v1',
-                'retry': {'max_attempts': 1},
-                'endpoints': {'ep': {'method': 'POST', 'path': '/submit'}},
-            })
+            client = APIClient(
+                {
+                    'base_url': 'https://api.example.com/v1',
+                    'retry': {'max_attempts': 1},
+                    'endpoints': {'ep': {'method': 'POST', 'path': '/submit'}},
+                }
+            )
             with self.assertRaises(RequestError) as ctx:
                 list(client.stream('ep'))
         exc = ctx.exception
@@ -1201,7 +1352,7 @@ class TestRequestErrorContext(unittest.TestCase):
         self.assertIn('/submit', exc.url)
 
     def test_url_reflects_post_auth_rewrite(self):
-        'if auth rewrites the URL, exception.url must be the rewritten version'
+        "if auth rewrites the URL, exception.url must be the rewritten version"
         import requests as req_lib
 
         def auth_handler(req, state):
@@ -1209,21 +1360,27 @@ class TestRequestErrorContext(unittest.TestCase):
 
         with patch('requests.Session.request') as m:
             m.side_effect = req_lib.ConnectionError('refused')
-            client = APIClient({
-                'base_url': 'https://api.example.com/v1',
-                'retry': {'max_attempts': 1},
-                'auth': {'type': 'callback', 'handler': auth_handler},
-                'endpoints': {'ep': {'method': 'GET', 'path': '/things'}},
-            })
+            client = APIClient(
+                {
+                    'base_url': 'https://api.example.com/v1',
+                    'retry': {'max_attempts': 1},
+                    'auth': {'type': 'callback', 'handler': auth_handler},
+                    'endpoints': {'ep': {'method': 'GET', 'path': '/things'}},
+                }
+            )
             with self.assertRaises(RequestError) as ctx:
                 client.fetch('ep')
 
-        self.assertIn('auth_token=secret', ctx.exception.url,
-            'exception.url should reflect post-auth URL, not pre-auth')
+        self.assertIn(
+            'auth_token=secret',
+            ctx.exception.url,
+            'exception.url should reflect post-auth URL, not pre-auth',
+        )
 
     def test_enrichment_is_idempotent(self):
-        'if exception already has context set, _enrich_exc must not overwrite it'
+        "if exception already has context set, _enrich_exc must not overwrite it"
         from rest_fetcher.client import _enrich_exc
+
         exc = RequestError('msg', endpoint='original', method='DELETE', url='http://x')
         _enrich_exc(exc, 'other', 'GET', 'http://y')
         self.assertEqual(exc.endpoint, 'original')
@@ -1238,7 +1395,6 @@ class TestRequestErrorContext(unittest.TestCase):
 
 
 class TestRetry(unittest.TestCase):
-
     def test_success_on_first_attempt(self):
         handler = RetryHandler({'max_attempts': 3}, {})
         mock_fn = MagicMock(return_value=make_response(200, {'ok': True}))
@@ -1272,8 +1428,7 @@ class TestRetry(unittest.TestCase):
 
     def test_respects_retry_after_header(self):
         handler = RetryHandler(
-            {'max_attempts': 2, 'backoff': 'linear', 'base_delay': 0},
-            {'respect_retry_after': True}
+            {'max_attempts': 2, 'backoff': 'linear', 'base_delay': 0}, {'respect_retry_after': True}
         )
         r429 = make_response(429)
         r429.headers = {'Retry-After': '5'}
@@ -1286,7 +1441,7 @@ class TestRetry(unittest.TestCase):
     def _assert_invalid_retry_after_falls_back(self, header_value):
         handler = RetryHandler(
             {'max_attempts': 2, 'backoff': 'linear', 'base_delay': 7.0},
-            {'respect_retry_after': True}
+            {'respect_retry_after': True},
         )
         r429 = make_response(429)
         r429.headers = {'Retry-After': header_value}
@@ -1301,7 +1456,7 @@ class TestRetry(unittest.TestCase):
     def test_max_retry_after_raises_rate_limit_error(self):
         handler = RetryHandler(
             {'max_attempts': 3, 'base_delay': 0, 'max_retry_after': 10.0},
-            {'respect_retry_after': True}
+            {'respect_retry_after': True},
         )
         r429 = make_response(429)
         r429.headers = {'Retry-After': '999'}
@@ -1339,6 +1494,7 @@ class TestRetry(unittest.TestCase):
 
     def test_network_error_retried(self):
         import requests as req_lib
+
         handler = RetryHandler({'max_attempts': 3, 'base_delay': 0}, {})
         # use requests.ConnectionError, not bulitin — retry only catches requests.RequestException
         mock_fn = MagicMock(side_effect=[req_lib.ConnectionError('down'), make_response(200)])
@@ -1347,12 +1503,14 @@ class TestRetry(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
 
     def test_programming_error_not_retried(self):
-        'non-requests exceptions (AttributeError etc) should bubble up immediately, not be retried'
+        "non-requests exceptions (AttributeError etc) should bubble up immediately, not be retried"
         handler = RetryHandler({'max_attempts': 3, 'base_delay': 0}, {})
         call_count = [0]
+
         def bad_fn():
             call_count[0] += 1
             raise AttributeError('programming error — wrong attribute')
+
         with patch('time.sleep'):
             with self.assertRaises(AttributeError):
                 handler.execute(bad_fn)
@@ -1360,6 +1518,7 @@ class TestRetry(unittest.TestCase):
 
     def test_requests_timeout_retried(self):
         import requests as req_lib
+
         handler = RetryHandler({'max_attempts': 3, 'base_delay': 0}, {})
         mock_fn = MagicMock(side_effect=[req_lib.Timeout('timed out'), make_response(200)])
         with patch('time.sleep'):
@@ -1367,8 +1526,9 @@ class TestRetry(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
 
     def test_network_error_wrapped_in_request_error(self):
-        'exhausted network retries should raise RequestError with cause set'
+        "exhausted network retries should raise RequestError with cause set"
         import requests as req_lib
+
         handler = RetryHandler({'max_attempts': 2, 'base_delay': 0}, {})
         cause = req_lib.ConnectionError('refused')
         mock_fn = MagicMock(side_effect=cause)
@@ -1378,7 +1538,16 @@ class TestRetry(unittest.TestCase):
         self.assertIs(ctx.exception.cause, cause)
 
     def test_jitter_full_applies_to_computed_backoff_only(self):
-        handler = RetryHandler({'max_attempts': 2, 'backoff': 'linear', 'base_delay': 4.0, 'max_delay': 4.0, 'jitter': 'full'}, {})
+        handler = RetryHandler(
+            {
+                'max_attempts': 2,
+                'backoff': 'linear',
+                'base_delay': 4.0,
+                'max_delay': 4.0,
+                'jitter': 'full',
+            },
+            {},
+        )
         with patch('rest_fetcher.retry.random.uniform', return_value=1.25) as uniform_mock:
             delay = handler._resolve_retry_delay({}, 500, 1)
         self.assertEqual(delay, 1.25)
@@ -1386,7 +1555,13 @@ class TestRetry(unittest.TestCase):
 
     def test_jitter_not_applied_to_retry_after(self):
         handler = RetryHandler(
-            {'max_attempts': 2, 'backoff': 'linear', 'base_delay': 4.0, 'max_delay': 4.0, 'jitter': 'full'},
+            {
+                'max_attempts': 2,
+                'backoff': 'linear',
+                'base_delay': 4.0,
+                'max_delay': 4.0,
+                'jitter': 'full',
+            },
             {'respect_retry_after': True},
         )
         with patch('rest_fetcher.retry.random.uniform') as uniform_mock:
@@ -1396,12 +1571,21 @@ class TestRetry(unittest.TestCase):
 
     def test_jitter_not_applied_to_min_delay(self):
         handler = RetryHandler(
-            {'max_attempts': 2, 'backoff': 'linear', 'base_delay': 4.0, 'max_delay': 4.0, 'jitter': 'full'},
+            {
+                'max_attempts': 2,
+                'backoff': 'linear',
+                'base_delay': 4.0,
+                'max_delay': 4.0,
+                'jitter': 'full',
+            },
             {'min_delay': 3.0},
         )
         sleeps = []
         handler._last_request_tick = float('inf')
-        with patch('time.sleep', side_effect=lambda s: sleeps.append(s)), patch('rest_fetcher.retry.random.uniform') as uniform_mock:
+        with (
+            patch('time.sleep', side_effect=lambda s: sleeps.append(s)),
+            patch('rest_fetcher.retry.random.uniform') as uniform_mock,
+        ):
             handler._enforce_min_delay()
         self.assertTrue(sleeps)
         uniform_mock.assert_not_called()
@@ -1427,27 +1611,38 @@ class TestRetry(unittest.TestCase):
     def test_endpoint_retry_none_suppresses_attempts_but_keeps_retry_after_wait(self):
         sleeps = []
         response = make_response(429, {'detail': 'slow down'}, headers={'Retry-After': '5'})
-        client = APIClient({
-            'base_url': 'https://example.invalid',
-            'retry': {'max_attempts': 4, 'backoff': 'linear', 'base_delay': 0.1, 'max_delay': 0.1},
-            'rate_limit': {'respect_retry_after': True},
-            'endpoints': {
-                't': {
-                    'method': 'GET',
-                    'path': '/t',
-                    'response_format': 'json',
-                    'retry': None,
-                }
-            },
-        })
-        with patch('requests.Session.request', return_value=response) as mock_req, patch('time.sleep', side_effect=lambda s: sleeps.append(s)):
+        client = APIClient(
+            {
+                'base_url': 'https://example.invalid',
+                'retry': {
+                    'max_attempts': 4,
+                    'backoff': 'linear',
+                    'base_delay': 0.1,
+                    'max_delay': 0.1,
+                },
+                'rate_limit': {'respect_retry_after': True},
+                'endpoints': {
+                    't': {
+                        'method': 'GET',
+                        'path': '/t',
+                        'response_format': 'json',
+                        'retry': None,
+                    }
+                },
+            }
+        )
+        with (
+            patch('requests.Session.request', return_value=response) as mock_req,
+            patch('time.sleep', side_effect=lambda s: sleeps.append(s)),
+        ):
             with self.assertRaises(RequestError):
                 client.fetch('t')
         self.assertEqual(mock_req.call_count, 1)
         self.assertEqual(sleeps, [5.0])
 
+
 class TestAPIClientFetch(unittest.TestCase):
-    'integration-style tests using mock lists — no real HTTP'
+    "integration-style tests using mock lists — no real HTTP"
 
     def _client(self, endpoint_config=None, **schema_overrides):
         endpoint = {'method': 'GET', 'path': '/test'}
@@ -1456,7 +1651,7 @@ class TestAPIClientFetch(unittest.TestCase):
         schema = {
             'base_url': 'https://api.example.com/v1',
             'endpoints': {'test': endpoint},
-            **schema_overrides
+            **schema_overrides,
         }
         return APIClient(schema)
 
@@ -1472,7 +1667,7 @@ class TestAPIClientFetch(unittest.TestCase):
                 'mock': [
                     {'items': [1, 2], 'next_cursor': 'p2'},
                     {'items': [3, 4], 'next_cursor': None},
-                ]
+                ],
             }
         )
         result = client.fetch('test')
@@ -1484,46 +1679,51 @@ class TestAPIClientFetch(unittest.TestCase):
                 'pagination': cursor_pagination('cursor', 'next_cursor', 'items'),
                 'mock': [
                     {'items': [1, 2], 'next_cursor': 'p2'},
-                    {'items': [3],    'next_cursor': None},
-                ]
+                    {'items': [3], 'next_cursor': None},
+                ],
             }
         )
         pages = list(client.stream('test'))
         self.assertEqual(pages, [[1, 2], [3]])
 
     def test_on_response_callback_applied(self):
-        client = self._client(endpoint_config={
-            'mock': [{'result': {'data': [42]}}],
-            'on_response': lambda resp, state: resp['result']['data'],
-        })
+        client = self._client(
+            endpoint_config={
+                'mock': [{'result': {'data': [42]}}],
+                'on_response': lambda resp, state: resp['result']['data'],
+            }
+        )
         result = client.fetch('test')
         self.assertEqual(result, [42])
 
     def test_on_complete_flattens_pages(self):
-        client = self._client(endpoint_config={
-            'pagination': cursor_pagination('cursor', 'next_cursor', 'items'),
-            'on_complete': lambda pages, state: [item for page in pages for item in page],
-            'mock': [
-                {'items': [1, 2], 'next_cursor': 'p2'},
-                {'items': [3, 4], 'next_cursor': None},
-            ]
-        })
+        client = self._client(
+            endpoint_config={
+                'pagination': cursor_pagination('cursor', 'next_cursor', 'items'),
+                'on_complete': lambda pages, state: [item for page in pages for item in page],
+                'mock': [
+                    {'items': [1, 2], 'next_cursor': 'p2'},
+                    {'items': [3, 4], 'next_cursor': None},
+                ],
+            }
+        )
         result = client.fetch('test')
         self.assertEqual(result, [1, 2, 3, 4])
 
     def test_on_page_called_per_page(self):
         collected = []
-        client = self._client(endpoint_config={
-            'pagination': cursor_pagination('cursor', 'next_cursor', 'items'),
-            'on_page': lambda data, state: collected.append(data),
-            'mock': [
-                {'items': [1, 2], 'next_cursor': 'p2'},
-                {'items': [3],    'next_cursor': None},
-            ]
-        })
+        client = self._client(
+            endpoint_config={
+                'pagination': cursor_pagination('cursor', 'next_cursor', 'items'),
+                'on_page': lambda data, state: collected.append(data),
+                'mock': [
+                    {'items': [1, 2], 'next_cursor': 'p2'},
+                    {'items': [3], 'next_cursor': None},
+                ],
+            }
+        )
         list(client.stream('test'))
         self.assertEqual(collected, [[1, 2], [3]])
-
 
     def test_stream_on_complete_receives_summary_and_yields_pages(self):
         seen = {}
@@ -1533,14 +1733,16 @@ class TestAPIClientFetch(unittest.TestCase):
             seen['stop'] = state.get('stop')
             return ['ignored']
 
-        client = self._client(endpoint_config={
-            'pagination': cursor_pagination('cursor', 'next_cursor', 'items'),
-            'on_complete': on_complete,
-            'mock': [
-                {'items': [1, 2], 'next_cursor': 'p2'},
-                {'items': [3], 'next_cursor': None},
-            ]
-        })
+        client = self._client(
+            endpoint_config={
+                'pagination': cursor_pagination('cursor', 'next_cursor', 'items'),
+                'on_complete': on_complete,
+                'mock': [
+                    {'items': [1, 2], 'next_cursor': 'p2'},
+                    {'items': [3], 'next_cursor': None},
+                ],
+            }
+        )
 
         pages = list(client.stream('test'))
 
@@ -1553,13 +1755,15 @@ class TestAPIClientFetch(unittest.TestCase):
         self.assertEqual(seen['stop'], {'kind': 'next_request_none'})
 
     def test_stream_run_exposes_summary_after_exhaustion(self):
-        client = self._client(endpoint_config={
-            'pagination': cursor_pagination('cursor', 'next_cursor', 'items'),
-            'mock': [
-                {'items': [1, 2], 'next_cursor': 'p2'},
-                {'items': [3], 'next_cursor': None},
-            ],
-        })
+        client = self._client(
+            endpoint_config={
+                'pagination': cursor_pagination('cursor', 'next_cursor', 'items'),
+                'mock': [
+                    {'items': [1, 2], 'next_cursor': 'p2'},
+                    {'items': [3], 'next_cursor': None},
+                ],
+            }
+        )
 
         run = client.stream_run('test')
         pages = list(run)
@@ -1572,13 +1776,15 @@ class TestAPIClientFetch(unittest.TestCase):
         self.assertEqual(run.summary.stop.kind, 'next_request_none')
 
     def test_stream_run_summary_none_if_iteration_abandoned(self):
-        client = self._client(endpoint_config={
-            'pagination': cursor_pagination('cursor', 'next_cursor', 'items'),
-            'mock': [
-                {'items': [1, 2], 'next_cursor': 'p2'},
-                {'items': [3], 'next_cursor': None},
-            ],
-        })
+        client = self._client(
+            endpoint_config={
+                'pagination': cursor_pagination('cursor', 'next_cursor', 'items'),
+                'mock': [
+                    {'items': [1, 2], 'next_cursor': 'p2'},
+                    {'items': [3], 'next_cursor': None},
+                ],
+            }
+        )
 
         run = client.stream_run('test')
         it = iter(run)
@@ -1594,13 +1800,15 @@ class TestAPIClientFetch(unittest.TestCase):
         self.assertEqual(run2.summary.pages, 2)
 
     def test_stream_run_exposes_stop_on_max_pages(self):
-        client = self._client(endpoint_config={
-            'pagination': cursor_pagination('cursor', 'next_cursor', 'items'),
-            'mock': [
-                {'items': [1, 2], 'next_cursor': 'p2'},
-                {'items': [3], 'next_cursor': None},
-            ],
-        })
+        client = self._client(
+            endpoint_config={
+                'pagination': cursor_pagination('cursor', 'next_cursor', 'items'),
+                'mock': [
+                    {'items': [1, 2], 'next_cursor': 'p2'},
+                    {'items': [3], 'next_cursor': None},
+                ],
+            }
+        )
 
         run = client.stream_run('test', max_pages=1)
         pages = list(run)
@@ -1615,14 +1823,18 @@ class TestAPIClientFetch(unittest.TestCase):
 
     def test_non_paginated_stream_on_complete_receives_summary(self):
         seen = {}
-        client = self._client(endpoint_config={
-            'mock': [{'result': {'x': 7}}],
-            'on_response': lambda resp, state: resp['result'],
-            'on_complete': lambda summary, state: seen.update({
-                'summary': summary,
-                'stop': state.get('stop'),
-            }),
-        })
+        client = self._client(
+            endpoint_config={
+                'mock': [{'result': {'x': 7}}],
+                'on_response': lambda resp, state: resp['result'],
+                'on_complete': lambda summary, state: seen.update(
+                    {
+                        'summary': summary,
+                        'stop': state.get('stop'),
+                    }
+                ),
+            }
+        )
 
         pages = list(client.stream('test'))
 
@@ -1635,11 +1847,13 @@ class TestAPIClientFetch(unittest.TestCase):
         self.assertEqual(seen['stop'], {'kind': 'next_request_none'})
 
     def test_fetch_non_paginated_on_complete_return_value_is_used(self):
-        client = self._client(endpoint_config={
-            'mock': [{'result': {'x': 7}}],
-            'on_response': lambda resp, state: resp['result'],
-            'on_complete': lambda pages, state: {'wrapped': pages},
-        })
+        client = self._client(
+            endpoint_config={
+                'mock': [{'result': {'x': 7}}],
+                'on_response': lambda resp, state: resp['result'],
+                'on_complete': lambda pages, state: {'wrapped': pages},
+            }
+        )
 
         result = client.fetch('test')
 
@@ -1647,11 +1861,14 @@ class TestAPIClientFetch(unittest.TestCase):
 
     def test_stream_non_paginated_on_complete_return_value_is_ignored(self):
         seen = {}
-        client = self._client(endpoint_config={
-            'mock': [{'result': {'x': 7}}],
-            'on_response': lambda resp, state: resp['result'],
-            'on_complete': lambda summary, state: seen.update({'summary': summary}) or ['ignored'],
-        })
+        client = self._client(
+            endpoint_config={
+                'mock': [{'result': {'x': 7}}],
+                'on_response': lambda resp, state: resp['result'],
+                'on_complete': lambda summary, state: seen.update({'summary': summary})
+                or ['ignored'],
+            }
+        )
 
         pages = list(client.stream('test'))
 
@@ -1660,11 +1877,15 @@ class TestAPIClientFetch(unittest.TestCase):
 
     def test_fetch_failure_does_not_call_on_complete(self):
         seen = {'called': False}
-        client = self._client(endpoint_config={
-            'on_complete': lambda pages, state: seen.update({'called': True}) or pages,
-        })
+        client = self._client(
+            endpoint_config={
+                'on_complete': lambda pages, state: seen.update({'called': True}) or pages,
+            }
+        )
 
-        with patch.object(client._session, 'request', side_effect=RequestError('boom', status_code=500)):
+        with patch.object(
+            client._session, 'request', side_effect=RequestError('boom', status_code=500)
+        ):
             with self.assertRaises(RequestError):
                 client.fetch('test')
 
@@ -1672,11 +1893,15 @@ class TestAPIClientFetch(unittest.TestCase):
 
     def test_stream_failure_does_not_call_on_complete(self):
         seen = {'called': False}
-        client = self._client(endpoint_config={
-            'on_complete': lambda summary, state: seen.update({'called': True}) or summary,
-        })
+        client = self._client(
+            endpoint_config={
+                'on_complete': lambda summary, state: seen.update({'called': True}) or summary,
+            }
+        )
 
-        with patch.object(client._session, 'request', side_effect=RequestError('boom', status_code=500)):
+        with patch.object(
+            client._session, 'request', side_effect=RequestError('boom', status_code=500)
+        ):
             with self.assertRaises(RequestError):
                 list(client.stream('test'))
 
@@ -1684,20 +1909,30 @@ class TestAPIClientFetch(unittest.TestCase):
 
     def test_call_time_params_merged(self):
         received = []
+
         def mock_fn(request_kwargs, ctx=None, *, run_state):
             received.append(request_kwargs.get('params', {}))
             return {'data': []}, {}
-        client = self._client(endpoint_config={
-            'params': {'default_param': 'yes'},
-        })
+
+        client = self._client(
+            endpoint_config={
+                'params': {'default_param': 'yes'},
+            }
+        )
         client._make_job('test', {'params': {'extra': 'value'}})._execute_request(
-            {'method': 'GET', 'url': 'x', 'headers': {}, 'params': {'default_param': 'yes', 'extra': 'value'}}
+            {
+                'method': 'GET',
+                'url': 'x',
+                'headers': {},
+                'params': {'default_param': 'yes', 'extra': 'value'},
+            }
         ) if False else None
         # verify via schema resolution
         from rest_fetcher.schema import resolve_endpoint
+
         schema = {
             'base_url': 'https://x.com',
-            'endpoints': {'test': {'params': {'default': 'yes'}}}
+            'endpoints': {'test': {'params': {'default': 'yes'}}},
         }
         resolved = resolve_endpoint(schema, 'test')
         self.assertEqual(resolved['params']['default'], 'yes')
@@ -1707,30 +1942,36 @@ class TestAPIClientFetch(unittest.TestCase):
         with self.assertRaises(SchemaError):
             client.fetch('nonexistent')
 
-
     def test_default_retry_behavior_preserved_when_no_retry_config_is_present(self):
         responses = [make_response(500), make_response(200, {'ok': True})]
-        client = APIClient({
-            'base_url': 'https://example.invalid',
-            'endpoints': {'t': {'method': 'GET', 'path': '/t', 'response_format': 'json'}},
-        })
+        client = APIClient(
+            {
+                'base_url': 'https://example.invalid',
+                'endpoints': {'t': {'method': 'GET', 'path': '/t', 'response_format': 'json'}},
+            }
+        )
         with patch('requests.Session.request', side_effect=responses), patch('time.sleep'):
             self.assertEqual(client.fetch('t'), {'ok': True})
 
     def test_endpoint_retry_none_does_not_sleep_backoff_without_retry_after(self):
-        client = APIClient({
-            'base_url': 'https://example.invalid',
-            'rate_limit': {'respect_retry_after': True},
-            'endpoints': {
-                't': {
-                    'method': 'GET',
-                    'path': '/t',
-                    'response_format': 'json',
-                    'retry': None,
-                }
-            },
-        })
-        with patch('requests.Session.request', return_value=make_response(500)), patch('time.sleep') as mock_sleep:
+        client = APIClient(
+            {
+                'base_url': 'https://example.invalid',
+                'rate_limit': {'respect_retry_after': True},
+                'endpoints': {
+                    't': {
+                        'method': 'GET',
+                        'path': '/t',
+                        'response_format': 'json',
+                        'retry': None,
+                    }
+                },
+            }
+        )
+        with (
+            patch('requests.Session.request', return_value=make_response(500)),
+            patch('time.sleep') as mock_sleep,
+        ):
             with self.assertRaises(RequestError):
                 client.fetch('t')
         mock_sleep.assert_not_called()
@@ -1738,18 +1979,14 @@ class TestAPIClientFetch(unittest.TestCase):
     def test_on_error_skip_returns_empty(self):
         with patch('requests.Session.request') as mock_req:
             mock_req.return_value = make_response(404)
-            client = self._client(endpoint_config={
-                'on_error': lambda exc, state: 'skip'
-            })
+            client = self._client(endpoint_config={'on_error': lambda exc, state: 'skip'})
             result = client.fetch('test')
             self.assertEqual(result, {})
 
     def test_on_error_raise_reraises(self):
         with patch('requests.Session.request') as mock_req:
             mock_req.return_value = make_response(404)
-            client = self._client(endpoint_config={
-                'on_error': lambda exc, state: 'raise'
-            })
+            client = self._client(endpoint_config={'on_error': lambda exc, state: 'raise'})
             with self.assertRaises(RequestError):
                 client.fetch('test')
 
@@ -1757,15 +1994,17 @@ class TestAPIClientFetch(unittest.TestCase):
         'returning anything other than "raise"/"skip" is a programming error'
         with patch('requests.Session.request') as mock_req:
             mock_req.return_value = make_response(404)
-            client = self._client(endpoint_config={
-                'on_error': lambda exc, state: 'continue'   # invalid
-            })
+            client = self._client(
+                endpoint_config={
+                    'on_error': lambda exc, state: 'continue'  # invalid
+                }
+            )
             with self.assertRaises(CallbackError) as ctx:
                 client.fetch('test')
             self.assertIn('continue', str(ctx.exception))
 
     def test_on_error_exception_propagates_directly(self):
-        'if on_error itself raises, the exception propagates as-is (not wrapped in CallbackError)'
+        "if on_error itself raises, the exception propagates as-is (not wrapped in CallbackError)"
         with patch('requests.Session.request') as mock_req:
             mock_req.return_value = make_response(404)  # 404 is not retried
 
@@ -1776,7 +2015,6 @@ class TestAPIClientFetch(unittest.TestCase):
             with self.assertRaises(ValueError, msg='should propagate ValueError directly'):
                 client.fetch('test')
 
-
     def test_on_error_http_state_includes_final_response_headers(self):
         seen = {}
 
@@ -1786,7 +2024,9 @@ class TestAPIClientFetch(unittest.TestCase):
             return 'skip'
 
         with patch('requests.Session.request') as mock_req:
-            mock_req.return_value = make_response(404, {'detail': 'nope'}, headers={'Retry-After': '9', 'X-Test': '1'})
+            mock_req.return_value = make_response(
+                404, {'detail': 'nope'}, headers={'Retry-After': '9', 'X-Test': '1'}
+            )
             client = self._client(endpoint_config={'on_error': on_error})
             client.fetch('test')
 
@@ -1797,18 +2037,21 @@ class TestAPIClientFetch(unittest.TestCase):
 
     def test_on_error_network_state_does_not_fabricate_response_headers(self):
         import requests as req_lib
+
         seen = {}
 
         def on_error(exc, state):
             seen['has_headers'] = '_response_headers' in state
             return 'skip'
 
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'retry': {'max_attempts': 1},
-            'on_error': on_error,
-            'endpoints': {'ep': {'method': 'GET', 'path': '/things'}},
-        })
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'retry': {'max_attempts': 1},
+                'on_error': on_error,
+                'endpoints': {'ep': {'method': 'GET', 'path': '/things'}},
+            }
+        )
         with patch('requests.Session.request', side_effect=req_lib.ConnectionError('refused')):
             client.fetch('ep')
         self.assertFalse(seen['has_headers'])
@@ -1825,13 +2068,15 @@ class TestAPIClientFetch(unittest.TestCase):
             seen_states.append(dict(state))
             return None  # single page
 
-        client = self._client(endpoint_config={
-            'pagination': {
-                'next_request': next_req,
-            },
-            'update_state': lambda resp, state: {'page_count': state.get('page_count', 0) + 1},
-            'mock': [{'data': 1}]
-        })
+        client = self._client(
+            endpoint_config={
+                'pagination': {
+                    'next_request': next_req,
+                },
+                'update_state': lambda resp, state: {'page_count': state.get('page_count', 0) + 1},
+                'mock': [{'data': 1}],
+            }
+        )
         list(client.stream('test'))
         self.assertIn('_response_headers', seen_states[0])
 
@@ -1844,14 +2089,15 @@ class TestAPIClientFetch(unittest.TestCase):
             schema = {
                 'base_url': 'https://x.com',
                 'response_parser': xml_parser,
-                'endpoints': {'test': {'method': 'GET'}}
+                'endpoints': {'test': {'method': 'GET'}},
             }
             client = APIClient(schema)
             result = client.fetch('test')
             self.assertEqual(result, {'parsed': 'from_xml'})
 
+
 class TestFormEncoded(unittest.TestCase):
-    'form= key: schema-level and call-time form-encoded POST'
+    "form= key: schema-level and call-time form-encoded POST"
 
     def _schema(self, endpoint_overrides=None):
         ep = {'method': 'POST', 'path': '/submit'}
@@ -1863,7 +2109,7 @@ class TestFormEncoded(unittest.TestCase):
         }
 
     def test_schema_form_sent_as_data(self):
-        'form dict in schema is passed to requests as data= (url-encoded)'
+        "form dict in schema is passed to requests as data= (url-encoded)"
         with patch('requests.Session.request') as mock_req:
             mock_req.return_value = make_response(200, {'ok': True})
             client = APIClient(self._schema({'form': {'grant_type': 'password'}}))
@@ -1874,7 +2120,7 @@ class TestFormEncoded(unittest.TestCase):
         self.assertNotIn('json', kwargs)
 
     def test_calltime_form_sent_as_data(self):
-        'form= at call time is passed to requests as data='
+        "form= at call time is passed to requests as data="
         with patch('requests.Session.request') as mock_req:
             mock_req.return_value = make_response(200, {'ok': True})
             client = APIClient(self._schema())
@@ -1885,99 +2131,114 @@ class TestFormEncoded(unittest.TestCase):
         self.assertNotIn('json', kwargs)
 
     def test_calltime_form_merges_over_schema_form(self):
-        'call-time form merges over schema form — schema static fields survive'
+        "call-time form merges over schema form — schema static fields survive"
         with patch('requests.Session.request') as mock_req:
             mock_req.return_value = make_response(200, {'ok': True})
             client = APIClient(self._schema({'form': {'grant_type': 'password'}}))
             client.fetch('submit', form={'username': 'alice', 'password': 'secret'})
         _, kwargs = mock_req.call_args
-        self.assertEqual(kwargs['data'], {
-            'grant_type': 'password',
-            'username': 'alice',
-            'password': 'secret',
-        })
+        self.assertEqual(
+            kwargs['data'],
+            {
+                'grant_type': 'password',
+                'username': 'alice',
+                'password': 'secret',
+            },
+        )
 
     def test_body_and_form_in_schema_raises_schema_error(self):
-        'body and form in schema simultaneously is a SchemaError'
+        "body and form in schema simultaneously is a SchemaError"
         with self.assertRaises(SchemaError):
             APIClient(self._schema({'body': {'key': 'val'}, 'form': {'field': 'val'}}))
 
     def test_schema_body_calltime_form_raises_schema_error(self):
-        'schema body + call-time form raises SchemaError at fetch time'
+        "schema body + call-time form raises SchemaError at fetch time"
         client = APIClient(self._schema({'body': {'key': 'val'}}))
         with patch('requests.Session.request'):
             with self.assertRaises(SchemaError):
                 client.fetch('submit', form={'field': 'val'})
 
     def test_schema_form_calltime_body_raises_schema_error(self):
-        'schema form + call-time body raises SchemaError at fetch time'
+        "schema form + call-time body raises SchemaError at fetch time"
         client = APIClient(self._schema({'form': {'field': 'val'}}))
         with patch('requests.Session.request'):
             with self.assertRaises(SchemaError):
                 client.fetch('submit', body={'key': 'val'})
 
     def test_files_validation_rejects_invalid_type(self):
-        'files must be dict/list/tuple — other types raise SchemaError at construction'
+        "files must be dict/list/tuple — other types raise SchemaError at construction"
         with self.assertRaises(SchemaError):
             APIClient(self._schema({'files': 'not-valid'}))
 
     def test_body_and_files_in_schema_raise_schema_error(self):
-        'body and files in schema simultaneously is a SchemaError'
+        "body and files in schema simultaneously is a SchemaError"
         with self.assertRaises(SchemaError):
             APIClient(self._schema({'body': {'key': 'val'}, 'files': {'upload': object()}}))
 
     def test_schema_files_are_sent_via_request_kwargs(self):
-        'schema files attach multipart payload via requests files='
+        "schema files attach multipart payload via requests files="
         marker = object()
         client = APIClient(self._schema({'files': {'upload': marker}}))
-        with patch.object(requests.Session, 'request', return_value=make_response(body={'ok': True})) as mock_req:
+        with patch.object(
+            requests.Session, 'request', return_value=make_response(body={'ok': True})
+        ) as mock_req:
             client.fetch('submit')
             self.assertIs(mock_req.call_args.kwargs['files']['upload'], marker)
             self.assertNotIn('json', mock_req.call_args.kwargs)
 
     def test_schema_form_and_files_can_coexist(self):
-        'multipart upload may include form fields and files together'
+        "multipart upload may include form fields and files together"
         marker = object()
         client = APIClient(self._schema({'form': {'field': 'val'}, 'files': {'upload': marker}}))
-        with patch.object(requests.Session, 'request', return_value=make_response(body={'ok': True})) as mock_req:
+        with patch.object(
+            requests.Session, 'request', return_value=make_response(body={'ok': True})
+        ) as mock_req:
             client.fetch('submit')
             self.assertEqual(mock_req.call_args.kwargs['data'], {'field': 'val'})
             self.assertIs(mock_req.call_args.kwargs['files']['upload'], marker)
 
     def test_calltime_files_override_schema_files(self):
-        'call-time files replace schema files rather than merging multipart payloads'
+        "call-time files replace schema files rather than merging multipart payloads"
         schema_marker = object()
         call_marker = object()
         client = APIClient(self._schema({'files': {'upload': schema_marker}}))
-        with patch.object(requests.Session, 'request', return_value=make_response(body={'ok': True})) as mock_req:
+        with patch.object(
+            requests.Session, 'request', return_value=make_response(body={'ok': True})
+        ) as mock_req:
             client.fetch('submit', files={'upload': call_marker})
             self.assertIs(mock_req.call_args.kwargs['files']['upload'], call_marker)
 
     def test_schema_body_calltime_files_raise_schema_error(self):
-        'schema body + call-time files raises SchemaError at fetch time'
+        "schema body + call-time files raises SchemaError at fetch time"
         client = APIClient(self._schema({'body': {'key': 'val'}}))
         with self.assertRaises(SchemaError):
-            with patch.object(requests.Session, 'request', return_value=make_response(body={'ok': True})):
+            with patch.object(
+                requests.Session, 'request', return_value=make_response(body={'ok': True})
+            ):
                 client.fetch('submit', files={'upload': object()})
 
     def test_calltime_body_schema_files_raise_schema_error(self):
-        'call-time body + schema files raises SchemaError at fetch time'
+        "call-time body + schema files raises SchemaError at fetch time"
         client = APIClient(self._schema({'files': {'upload': object()}}))
         with self.assertRaises(SchemaError):
-            with patch.object(requests.Session, 'request', return_value=make_response(body={'ok': True})):
+            with patch.object(
+                requests.Session, 'request', return_value=make_response(body={'ok': True})
+            ):
                 client.fetch('submit', body={'key': 'val'})
 
     def test_calltime_files_pass_through_sequence(self):
-        'call-time files may use requests-compatible sequence form'
+        "call-time files may use requests-compatible sequence form"
         marker = object()
         files = [('upload', marker)]
         client = APIClient(self._schema({}))
-        with patch.object(requests.Session, 'request', return_value=make_response(body={'ok': True})) as mock_req:
+        with patch.object(
+            requests.Session, 'request', return_value=make_response(body={'ok': True})
+        ) as mock_req:
             client.fetch('submit', files=files)
             self.assertEqual(mock_req.call_args.kwargs['files'], files)
 
     def test_no_form_no_body_sets_neither(self):
-        'no form or body — neither data= nor json= in request kwargs'
+        "no form or body — neither data= nor json= in request kwargs"
         with patch('requests.Session.request') as mock_req:
             mock_req.return_value = make_response(200, {'ok': True})
             client = APIClient(self._schema())
@@ -1988,7 +2249,6 @@ class TestFormEncoded(unittest.TestCase):
 
 
 class TestOnRequestHook(unittest.TestCase):
-
     def test_on_request_shapes_request_before_auth(self):
         seen_by_auth = {}
 
@@ -1998,18 +2258,22 @@ class TestOnRequestHook(unittest.TestCase):
 
         def auth_handler(req, config):
             seen_by_auth['x_run_id'] = req.get('headers', {}).get('X-Run-ID')
-            headers = {**req.get('headers', {}), 'Authorization': f"Bearer {config['token']}"}
+            headers = {**req.get('headers', {}), 'Authorization': f'Bearer {config["token"]}'}
             return {**req, 'headers': headers}
 
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'state': {'run_id': 'run-123', 'token': 'secret'},
-            'auth': {'type': 'callback', 'handler': auth_handler},
-            'on_request': on_request,
-            'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
-        })
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'state': {'run_id': 'run-123', 'token': 'secret'},
+                'auth': {'type': 'callback', 'handler': auth_handler},
+                'on_request': on_request,
+                'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
+            }
+        )
 
-        with patch.object(requests.Session, 'request', return_value=make_response(body={'ok': True})) as mock_req:
+        with patch.object(
+            requests.Session, 'request', return_value=make_response(body={'ok': True})
+        ) as mock_req:
             client.fetch('ep')
 
         self.assertEqual(seen_by_auth['x_run_id'], 'run-123')
@@ -2027,77 +2291,104 @@ class TestOnRequestHook(unittest.TestCase):
             seen['headers'] = dict(req.get('headers', {}))
             return {'ok': True}
 
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'state': {'trace_id': 'trace-1'},
-            'on_request': on_request,
-            'endpoints': {'ep': {'method': 'GET', 'path': '/x', 'mock': mock_handler}},
-        })
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'state': {'trace_id': 'trace-1'},
+                'on_request': on_request,
+                'endpoints': {'ep': {'method': 'GET', 'path': '/x', 'mock': mock_handler}},
+            }
+        )
 
         result = client.fetch('ep')
         self.assertEqual(result, {'ok': True})
         self.assertEqual(seen['headers']['X-Trace'], 'trace-1')
 
     def test_on_request_must_return_dict(self):
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'state': {'trace_id': 'trace-1'},
-            'on_request': lambda req, state: req.update({'headers': {'X-Trace': state['trace_id']}}),
-            'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
-        })
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'state': {'trace_id': 'trace-1'},
+                'on_request': lambda req, state: req.update(
+                    {'headers': {'X-Trace': state['trace_id']}}
+                ),
+                'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
+            }
+        )
 
-        with patch.object(requests.Session, 'request', return_value=make_response(body={'ok': True})):
+        with patch.object(
+            requests.Session, 'request', return_value=make_response(body={'ok': True})
+        ):
             with self.assertRaises(CallbackError) as ctx:
                 client.fetch('ep')
         self.assertIn('on_request must return a dict of request kwargs', str(ctx.exception))
         self.assertIn('did you forget to return', str(ctx.exception))
 
     def test_endpoint_on_request_overrides_client_on_request(self):
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'state': {'trace_id': 'trace-1'},
-            'on_request': lambda req, state: {**req, 'headers': {**req.get('headers', {}), 'X-Client': '1'}},
-            'endpoints': {
-                'ep': {
-                    'method': 'GET',
-                    'path': '/x',
-                    'on_request': lambda req, state: {**req, 'headers': {**req.get('headers', {}), 'X-Endpoint': '1'}},
-                }
-            },
-        })
-        with patch.object(requests.Session, 'request', return_value=make_response(body={'ok': True})) as mock_req:
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'state': {'trace_id': 'trace-1'},
+                'on_request': lambda req, state: {
+                    **req,
+                    'headers': {**req.get('headers', {}), 'X-Client': '1'},
+                },
+                'endpoints': {
+                    'ep': {
+                        'method': 'GET',
+                        'path': '/x',
+                        'on_request': lambda req, state: {
+                            **req,
+                            'headers': {**req.get('headers', {}), 'X-Endpoint': '1'},
+                        },
+                    }
+                },
+            }
+        )
+        with patch.object(
+            requests.Session, 'request', return_value=make_response(body={'ok': True})
+        ) as mock_req:
             client.fetch('ep')
         headers = mock_req.call_args.kwargs['headers']
         self.assertNotIn('X-Client', headers)
         self.assertEqual(headers['X-Endpoint'], '1')
 
     def test_endpoint_on_request_none_suppresses_client_on_request(self):
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'on_request': lambda req, state: {**req, 'headers': {**req.get('headers', {}), 'X-Client': '1'}},
-            'endpoints': {
-                'ep': {
-                    'method': 'GET',
-                    'path': '/x',
-                    'on_request': None,
-                }
-            },
-        })
-        with patch.object(requests.Session, 'request', return_value=make_response(body={'ok': True})) as mock_req:
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'on_request': lambda req, state: {
+                    **req,
+                    'headers': {**req.get('headers', {}), 'X-Client': '1'},
+                },
+                'endpoints': {
+                    'ep': {
+                        'method': 'GET',
+                        'path': '/x',
+                        'on_request': None,
+                    }
+                },
+            }
+        )
+        with patch.object(
+            requests.Session, 'request', return_value=make_response(body={'ok': True})
+        ) as mock_req:
             client.fetch('ep')
         headers = mock_req.call_args.kwargs['headers']
         self.assertNotIn('X-Client', headers)
 
 
 class TestErrorMessages(unittest.TestCase):
-
     def test_error_includes_api_message_anthropic_style(self):
         'anthropic error body: {"type": "error", "error": {"message": "..."}}'
         with patch('requests.Session.request') as mock_req:
-            mock_req.return_value = make_response(400, {
-                'type': 'error',
-                'error': {'type': 'invalid_request_error', 'message': 'missing beta header'}
-            })
+            mock_req.return_value = make_response(
+                400,
+                {
+                    'type': 'error',
+                    'error': {'type': 'invalid_request_error', 'message': 'missing beta header'},
+                },
+            )
             client = APIClient(simple_schema())
             with self.assertRaises(RequestError) as ctx:
                 client.fetch('test')
@@ -2131,10 +2422,10 @@ class TestErrorMessages(unittest.TestCase):
                 client.fetch('test')
         self.assertIn('Internal Server Error', str(ctx.exception))
 
-class TestEmptyBodyAndStatusCode(unittest.TestCase):
 
+class TestEmptyBodyAndStatusCode(unittest.TestCase):
     def test_empty_body_returns_none(self):
-        'HTTP 204 No Content — empty body should parse to None, not raise'
+        "HTTP 204 No Content — empty body should parse to None, not raise"
         with patch('requests.Session.request') as mock_req:
             r = make_response(204, None)
             r.text = ''
@@ -2159,9 +2450,12 @@ class TestEmptyBodyAndStatusCode(unittest.TestCase):
         with patch('requests.Session.request') as mock_req:
             mock_req.return_value = make_response(204, None)
             mock_req.return_value.text = ''
-            client = APIClient(simple_schema(
-                on_response=lambda resp, state: captured.update(state['_response_headers']) or resp
-            ))
+            client = APIClient(
+                simple_schema(
+                    on_response=lambda resp, state: captured.update(state['_response_headers'])
+                    or resp
+                )
+            )
             client.fetch('test')
         self.assertEqual(captured['_status_code'], 204)
 
@@ -2169,120 +2463,156 @@ class TestEmptyBodyAndStatusCode(unittest.TestCase):
         seen = {}
         with patch('requests.Session.request') as mock_req:
             mock_req.return_value = make_response(200, {'ok': True})
-            client = APIClient(simple_schema(
-                on_response=lambda resp, state: seen.update({'code': state['_response_headers']['_status_code']}) or resp
-            ))
+            client = APIClient(
+                simple_schema(
+                    on_response=lambda resp, state: seen.update(
+                        {'code': state['_response_headers']['_status_code']}
+                    )
+                    or resp
+                )
+            )
             client.fetch('test')
         self.assertEqual(seen['code'], 200)
 
     def test_204_pattern_is_holiday(self):
-        '204 = not a holiday pattern, as used by nager.at IsTodayPublicHoliday endpoint'
+        "204 = not a holiday pattern, as used by nager.at IsTodayPublicHoliday endpoint"
         with patch('requests.Session.request') as mock_req:
             r = make_response(204, None)
             r.text = ''
             mock_req.return_value = r
-            client = APIClient(simple_schema(
-                on_response=lambda resp, state: {
-                    'is_holiday': state['_response_headers']['_status_code'] == 200
-                }
-            ))
+            client = APIClient(
+                simple_schema(
+                    on_response=lambda resp, state: {
+                        'is_holiday': state['_response_headers']['_status_code'] == 200
+                    }
+                )
+            )
             result = client.fetch('test')
             self.assertEqual(result, {'is_holiday': False})
 
     def test_200_pattern_is_holiday(self):
-        '200 = is a holiday pattern'
+        "200 = is a holiday pattern"
         with patch('requests.Session.request') as mock_req:
             r = make_response(200, None)
             r.text = ''
             mock_req.return_value = r
-            client = APIClient(simple_schema(
-                on_response=lambda resp, state: {
-                    'is_holiday': state['_response_headers']['_status_code'] == 200
-                }
-            ))
+            client = APIClient(
+                simple_schema(
+                    on_response=lambda resp, state: {
+                        'is_holiday': state['_response_headers']['_status_code'] == 200
+                    }
+                )
+            )
             result = client.fetch('test')
             self.assertEqual(result, {'is_holiday': True})
 
+
 class TestStateSeedingPrecedence(unittest.TestCase):
-    'initial_params seeds state last; call-time params override initial_params in state'
+    "initial_params seeds state last; call-time params override initial_params in state"
 
     def test_call_time_params_win_over_initial_params_in_state(self):
-        'initial_params={limit:100}, call-time params={limit:50} -> state[limit]=50 -> page 2 uses 50'
+        "initial_params={limit:100}, call-time params={limit:50} -> state[limit]=50 -> page 2 uses 50"
         from rest_fetcher.pagination import CycleRunner
+
         requests_seen = []
         call_count = [0]
 
         def mock_fetch(request, ctx=None, *, run_state):
-            requests_seen.append({k: dict(v) if isinstance(v, dict) else v
-                                  for k, v in request.items()})
+            requests_seen.append(
+                {k: dict(v) if isinstance(v, dict) else v for k, v in request.items()}
+            )
             call_count[0] += 1
             # return 50 items on page 1 — full page at call-time limit
-            return outcome(({'items': list(range(50))} if call_count[0] == 1
-                    else {'items': []}), request)
+            return outcome(
+                ({'items': list(range(50))} if call_count[0] == 1 else {'items': []}), request
+            )
 
         strategy = offset_pagination(limit=100, data_path='items')
         runner = CycleRunner(strategy)
 
         # initial_params says limit=100, but call-time override says limit=50
         # state seeding: initial_params first, then call-time params overwrite
-        initial = {'method': 'GET', 'url': 'https://example.com',
-                   'params': {'offset': 0, 'limit': 50}}  # call-time override
+        initial = {
+            'method': 'GET',
+            'url': 'https://example.com',
+            'params': {'offset': 0, 'limit': 50},
+        }  # call-time override
         list(runner.run(mock_fetch, initial))
 
         # page 2 must use limit=50 (call-time), not limit=100 (initial_params factory default)
-        self.assertEqual(requests_seen[1]['params']['limit'], 50,
-            'call-time limit=50 should win over factory initial_params limit=100 in state')
+        self.assertEqual(
+            requests_seen[1]['params']['limit'],
+            50,
+            'call-time limit=50 should win over factory initial_params limit=100 in state',
+        )
 
     def test_initial_params_used_when_no_call_time_override(self):
-        'when no call-time override, initial_params seed is used'
+        "when no call-time override, initial_params seed is used"
         from rest_fetcher.pagination import CycleRunner
+
         requests_seen = []
         call_count = [0]
 
         def mock_fetch(request, ctx=None, *, run_state):
-            requests_seen.append({k: dict(v) if isinstance(v, dict) else v
-                                  for k, v in request.items()})
+            requests_seen.append(
+                {k: dict(v) if isinstance(v, dict) else v for k, v in request.items()}
+            )
             call_count[0] += 1
-            return outcome(({'items': list(range(100))} if call_count[0] == 1
-                    else {'items': []}), request)
+            return outcome(
+                ({'items': list(range(100))} if call_count[0] == 1 else {'items': []}), request
+            )
 
         strategy = offset_pagination(limit=100, data_path='items')
         runner = CycleRunner(strategy)
         # initial request already has limit=100 from initial_params injection
-        initial = {'method': 'GET', 'url': 'https://example.com',
-                   'params': {'offset': 0, 'limit': 100}}
+        initial = {
+            'method': 'GET',
+            'url': 'https://example.com',
+            'params': {'offset': 0, 'limit': 100},
+        }
         list(runner.run(mock_fetch, initial))
         self.assertEqual(requests_seen[1]['params']['limit'], 100)
 
     def test_page_number_call_time_page_size_wins_in_state(self):
         from rest_fetcher.pagination import CycleRunner
+
         requests_seen = []
         call_count = [0]
 
         def mock_fetch(request, ctx=None, *, run_state):
-            requests_seen.append({k: dict(v) if isinstance(v, dict) else v
-                                  for k, v in request.items()})
+            requests_seen.append(
+                {k: dict(v) if isinstance(v, dict) else v for k, v in request.items()}
+            )
             call_count[0] += 1
-            return outcome(({'results': list(range(25))} if call_count[0] == 1
-                    else {'results': []}), request)
+            return outcome(
+                ({'results': list(range(25))} if call_count[0] == 1 else {'results': []}), request
+            )
 
         strategy = page_number_pagination(page_size=50, data_path='results')
         runner = CycleRunner(strategy)
-        initial = {'method': 'GET', 'url': 'https://example.com',
-                   'params': {'page': 1, 'page_size': 25}}  # call-time: 25, factory: 50
+        initial = {
+            'method': 'GET',
+            'url': 'https://example.com',
+            'params': {'page': 1, 'page_size': 25},
+        }  # call-time: 25, factory: 50
         list(runner.run(mock_fetch, initial))
-        self.assertEqual(requests_seen[1]['params']['page_size'], 25,
-            'call-time page_size=25 should win over factory page_size=50 in state')
+        self.assertEqual(
+            requests_seen[1]['params']['page_size'],
+            25,
+            'call-time page_size=25 should win over factory page_size=50 in state',
+        )
+
 
 class TestInitialStatePrecedence(unittest.TestCase):
-
     def test_initial_params_override_seed_in_callback_state(self):
         seen = {}
-        runner = CycleRunner({
-            'next_request': lambda resp, state: None,
-            'on_response': lambda resp, state: (seen.update(state) or resp),
-            'initial_params': {'page': 2},
-        })
+        runner = CycleRunner(
+            {
+                'next_request': lambda resp, state: None,
+                'on_response': lambda resp, state: (seen.update(state) or resp),
+                'initial_params': {'page': 2},
+            }
+        )
 
         def mock_fetch(req, ctx=None, *, run_state):
             return outcome({'items': [1]}, req)
@@ -2293,11 +2623,10 @@ class TestInitialStatePrecedence(unittest.TestCase):
 
 
 class TestPathParams(unittest.TestCase):
-
     def test_path_params_interpolated(self):
         schema = {
             'base_url': 'https://api.example.com/v3',
-            'endpoints': {'holidays': {'method': 'GET', 'path': '/holidays/{year}/{country}'}}
+            'endpoints': {'holidays': {'method': 'GET', 'path': '/holidays/{year}/{country}'}},
         }
         client = APIClient(schema)
         # verify _build_url resolves correctly via the job
@@ -2307,9 +2636,10 @@ class TestPathParams(unittest.TestCase):
 
     def test_path_params_missing_key_raises(self):
         from rest_fetcher.exceptions import SchemaError
+
         schema = {
             'base_url': 'https://api.example.com/v3',
-            'endpoints': {'holidays': {'method': 'GET', 'path': '/holidays/{year}/{country}'}}
+            'endpoints': {'holidays': {'method': 'GET', 'path': '/holidays/{year}/{country}'}},
         }
         client = APIClient(schema)
         job = client._make_job('holidays', {'path_params': {'year': 2026}})  # missing country
@@ -2319,31 +2649,36 @@ class TestPathParams(unittest.TestCase):
     def test_no_path_params_unchanged(self):
         schema = {
             'base_url': 'https://api.example.com/v3',
-            'endpoints': {'items': {'method': 'GET', 'path': '/items'}}
+            'endpoints': {'items': {'method': 'GET', 'path': '/items'}},
         }
         client = APIClient(schema)
         job = client._make_job('items', {})
         self.assertEqual(job._build_url(), 'https://api.example.com/v3/items')
 
     def test_path_params_with_mock_full_fetch(self):
-        client = APIClient({
-            'base_url': 'https://date.nager.at/api/v3',
-            'endpoints': {
-                'holidays': {
-                    'method': 'GET',
-                    'path': '/PublicHolidays/{year}/{country}',
-                    'mock': [{'date': '2026-01-01', 'name': "New Year's Day", 'countryCode': 'US'}]
-                }
+        client = APIClient(
+            {
+                'base_url': 'https://date.nager.at/api/v3',
+                'endpoints': {
+                    'holidays': {
+                        'method': 'GET',
+                        'path': '/PublicHolidays/{year}/{country}',
+                        'mock': [
+                            {'date': '2026-01-01', 'name': "New Year's Day", 'countryCode': 'US'}
+                        ],
+                    }
+                },
             }
-        })
+        )
         result = client.fetch('holidays', path_params={'year': 2026, 'country': 'US'})
         self.assertEqual(result['countryCode'], 'US')
         self.assertEqual(result['name'], "New Year's Day")
 
-class TestHeaderScrubbing(unittest.TestCase):
 
+class TestHeaderScrubbing(unittest.TestCase):
     def setUp(self):
         from rest_fetcher.client import _scrub
+
         self.scrub = _scrub
 
     # default exact-match set
@@ -2354,8 +2689,9 @@ class TestHeaderScrubbing(unittest.TestCase):
         self.assertEqual(self.scrub({'X-Api-Key': 'secret'})['X-Api-Key'], '***')
 
     def test_safe_header_preserved(self):
-        self.assertEqual(self.scrub({'Content-Type': 'application/json'})['Content-Type'],
-                         'application/json')
+        self.assertEqual(
+            self.scrub({'Content-Type': 'application/json'})['Content-Type'], 'application/json'
+        )
 
     # pattern-match: any key containing token/secret/password/key/auth
     def test_custom_token_header_scrubbed_by_pattern(self):
@@ -2372,8 +2708,7 @@ class TestHeaderScrubbing(unittest.TestCase):
 
     # extra_scrub from schema['scrub_headers']
     def test_extra_scrub_exact_name(self):
-        result = self.scrub({'X-Tenant-Id': 'abc', 'Accept': '*/*'},
-                            extra_scrub=['X-Tenant-Id'])
+        result = self.scrub({'X-Tenant-Id': 'abc', 'Accept': '*/*'}, extra_scrub=['X-Tenant-Id'])
         self.assertEqual(result['X-Tenant-Id'], '***')
         self.assertEqual(result['Accept'], '*/*')
 
@@ -2394,6 +2729,7 @@ class TestHeaderScrubbing(unittest.TestCase):
 
     def test_scrub_recorded_url_redacts_builtin_query_params(self):
         from rest_fetcher.client import _scrub_recorded_url
+
         url = 'https://api.example.com/items?access_token=abc123&limit=100'
         result = _scrub_recorded_url(url)
         self.assertIn('access_token=[REDACTED]', result)
@@ -2401,6 +2737,7 @@ class TestHeaderScrubbing(unittest.TestCase):
 
     def test_scrub_recorded_url_redacts_by_pattern(self):
         from rest_fetcher.client import _scrub_recorded_url
+
         url = 'https://api.example.com/items?my_auth_token=abc123&page=2'
         result = _scrub_recorded_url(url)
         self.assertIn('my_auth_token=[REDACTED]', result)
@@ -2408,6 +2745,7 @@ class TestHeaderScrubbing(unittest.TestCase):
 
     def test_scrub_recorded_url_redacts_user_extensions(self):
         from rest_fetcher.client import _scrub_recorded_url
+
         url = 'https://api.example.com/items?tenant_token=abc123&page=2'
         result = _scrub_recorded_url(url, extra_scrub=['tenant_token'])
         self.assertIn('tenant_token=[REDACTED]', result)
@@ -2415,6 +2753,7 @@ class TestHeaderScrubbing(unittest.TestCase):
 
     def test_scrub_recorded_url_does_not_redact_generic_code_by_default(self):
         from rest_fetcher.client import _scrub_recorded_url
+
         url = 'https://api.example.com/items?code=US&page=2'
         result = _scrub_recorded_url(url)
         self.assertIn('code=US', result)
@@ -2422,11 +2761,11 @@ class TestHeaderScrubbing(unittest.TestCase):
 
     def test_scrub_recorded_url_can_redact_code_via_extension(self):
         from rest_fetcher.client import _scrub_recorded_url
+
         url = 'https://api.example.com/items?code=secret123&page=2'
         result = _scrub_recorded_url(url, extra_scrub=['code'])
         self.assertIn('code=[REDACTED]', result)
         self.assertIn('page=2', result)
-
 
     def test_scrub_query_params_schema_key_validated(self):
         with self.assertRaises(SchemaError):
@@ -2448,9 +2787,9 @@ class TestHeaderScrubbing(unittest.TestCase):
         with self.assertRaises(SchemaError):
             validate({**simple_schema(), 'retry': {'max_attempts': 3, 'base_delay': 'fast'}})
 
+
 # Item 5 — state scope semantics
 class TestStateScopeSemantics(unittest.TestCase):
-
     def test_pagination_callback_receives_seeded_state_keys(self):
         seen_in_callback = {}
 
@@ -2458,17 +2797,21 @@ class TestStateScopeSemantics(unittest.TestCase):
             seen_in_callback.update(state)
             return None
 
-        client = APIClient({
-            **simple_schema(),
-            'state': {'region': 'eu-west-1', 'env': 'prod'},
-            'endpoints': {'ep': {
-                'mock': [{'items': [1, 2]}],
-                'pagination': {
-                    'next_request': next_req,
+        client = APIClient(
+            {
+                **simple_schema(),
+                'state': {'region': 'eu-west-1', 'env': 'prod'},
+                'endpoints': {
+                    'ep': {
+                        'mock': [{'items': [1, 2]}],
+                        'pagination': {
+                            'next_request': next_req,
+                        },
+                        'on_response': lambda r, s: r.get('items', []),
+                    }
                 },
-                'on_response': lambda r, s: r.get('items', []),
-            }}
-        })
+            }
+        )
         client.fetch('ep')
 
         self.assertEqual(seen_in_callback.get('region'), 'eu-west-1')
@@ -2479,17 +2822,21 @@ class TestStateScopeSemantics(unittest.TestCase):
             state['injected'] = 'should-raise'
             return None
 
-        client = APIClient({
-            **simple_schema(),
-            'state': {'region': 'eu'},
-            'endpoints': {'ep': {
-                'mock': [{'items': [1]}],
-                'pagination': {
-                    'next_request': next_req,
+        client = APIClient(
+            {
+                **simple_schema(),
+                'state': {'region': 'eu'},
+                'endpoints': {
+                    'ep': {
+                        'mock': [{'items': [1]}],
+                        'pagination': {
+                            'next_request': next_req,
+                        },
+                        'on_response': lambda r, s: r.get('items', []),
+                    }
                 },
-                'on_response': lambda r, s: r.get('items', []),
-            }}
-        })
+            }
+        )
         with self.assertRaises(CallbackError) as ctx:
             client.fetch('ep')
         self.assertIn('injected', str(ctx.exception))
@@ -2500,14 +2847,18 @@ class TestStateScopeSemantics(unittest.TestCase):
         strategy = offset_pagination(limit=10, data_path='items')
         strategy['on_response'] = lambda r, s: (seen.update(s) or r.get('items', []))
 
-        client = APIClient({
-            **simple_schema(),
-            'state': {'env': 'test'},
-            'endpoints': {'ep': {
-                'mock': [{'items': list(range(10))}, {'items': []}],
-                'pagination': strategy,
-            }}
-        })
+        client = APIClient(
+            {
+                **simple_schema(),
+                'state': {'env': 'test'},
+                'endpoints': {
+                    'ep': {
+                        'mock': [{'items': list(range(10))}, {'items': []}],
+                        'pagination': strategy,
+                    }
+                },
+            }
+        )
         client.fetch('ep')
         self.assertEqual(seen.get('env'), 'test')
         self.assertIn('offset', seen)
@@ -2521,16 +2872,17 @@ class TestStateScopeSemantics(unittest.TestCase):
 
         with patch('requests.Session.request') as mock_req:
             mock_req.return_value = make_response(404, {'error': 'not found'})
-            client = APIClient({
-                'base_url': 'https://api.example.com/v1',
-                'state': {'user': 'alice'},
-                'on_error': on_err,
-                'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
-            })
+            client = APIClient(
+                {
+                    'base_url': 'https://api.example.com/v1',
+                    'state': {'user': 'alice'},
+                    'on_error': on_err,
+                    'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
+                }
+            )
             client.fetch('ep')
 
         self.assertEqual(received_state.get('user'), 'alice')
-
 
     def test_on_error_state_is_read_only(self):
         from rest_fetcher import StateViewMutationError
@@ -2545,12 +2897,14 @@ class TestStateScopeSemantics(unittest.TestCase):
 
         with patch('requests.Session.request') as mock_req:
             mock_req.return_value = make_response(404, {'error': 'not found'})
-            client = APIClient({
-                'base_url': 'https://api.example.com/v1',
-                'state': {'user': 'alice'},
-                'on_error': on_err,
-                'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
-            })
+            client = APIClient(
+                {
+                    'base_url': 'https://api.example.com/v1',
+                    'state': {'user': 'alice'},
+                    'on_error': on_err,
+                    'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
+                }
+            )
             client.fetch('ep')
 
         self.assertEqual(len(errors), 1)
@@ -2562,27 +2916,31 @@ class TestStateScopeSemantics(unittest.TestCase):
             auth_received.update(dict(config))
             return req
 
-        client = APIClient({
-            **simple_schema(),
-            'state': {'token': 'abc'},
-            'auth': {'type': 'callback', 'handler': auth_handler},
-            'endpoints': {'ep': {
-                'mock': [{'items': list(range(10))}, {'items': []}],
-                'pagination': {
-                    'next_request': lambda r, s: None,
-                    'initial_params': {'offset': 0, 'limit': 10},
+        client = APIClient(
+            {
+                **simple_schema(),
+                'state': {'token': 'abc'},
+                'auth': {'type': 'callback', 'handler': auth_handler},
+                'endpoints': {
+                    'ep': {
+                        'mock': [{'items': list(range(10))}, {'items': []}],
+                        'pagination': {
+                            'next_request': lambda r, s: None,
+                            'initial_params': {'offset': 0, 'limit': 10},
+                        },
+                        'on_response': lambda r, s: r.get('items', []),
+                    }
                 },
-                'on_response': lambda r, s: r.get('items', []),
-            }}
-        })
+            }
+        )
         client.fetch('ep')
         self.assertEqual(auth_received.get('token'), 'abc')
         self.assertNotIn('offset', auth_received)
 
-class TestNonPaginatedCallbackPromotion(unittest.TestCase):
 
+class TestNonPaginatedCallbackPromotion(unittest.TestCase):
     def test_non_paginated_root_level_callbacks_run_through_trivial_runner(self):
-        'non-paginated endpoints still apply root-level callbacks through the trivial runner'
+        "non-paginated endpoints still apply root-level callbacks through the trivial runner"
         seen = {}
 
         def on_page(page, state):
@@ -2591,17 +2949,19 @@ class TestNonPaginatedCallbackPromotion(unittest.TestCase):
         def on_complete(pages, state):
             seen['complete'] = list(pages)
 
-        client = APIClient({
-            **simple_schema(),
-            'endpoints': {
-                'ep': {
-                    'mock': [{'items': [1, 2, 3]}],
-                    'on_response': lambda resp, state: resp['items'],
-                    'on_page': on_page,
-                    'on_complete': on_complete,
-                }
+        client = APIClient(
+            {
+                **simple_schema(),
+                'endpoints': {
+                    'ep': {
+                        'mock': [{'items': [1, 2, 3]}],
+                        'on_response': lambda resp, state: resp['items'],
+                        'on_page': on_page,
+                        'on_complete': on_complete,
+                    }
+                },
             }
-        })
+        )
 
         result = client.fetch('ep')
         self.assertEqual(result, [[1, 2, 3]])
@@ -2609,33 +2969,37 @@ class TestNonPaginatedCallbackPromotion(unittest.TestCase):
         self.assertEqual(seen['complete'], [[1, 2, 3]])
 
     def test_endpoint_on_response_overrides_builtin_helper_on_response(self):
-        'endpoint-level on_response wins over the helper-provided on_response'
+        "endpoint-level on_response wins over the helper-provided on_response"
         seen = {'endpoint_calls': 0}
 
         def endpoint_on_response(resp, state):
             seen['endpoint_calls'] += 1
             return resp.get('items', [])
 
-        client = APIClient({
-            **simple_schema(),
-            'endpoints': {
-                'ep': {
-                    'mock': [
-                        {'items': [1, 2], 'next_cursor': 'n1'},
-                        {'items': [3], 'next_cursor': None},
-                    ],
-                    'pagination': cursor_pagination(cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'),
-                    'on_response': endpoint_on_response,
-                }
+        client = APIClient(
+            {
+                **simple_schema(),
+                'endpoints': {
+                    'ep': {
+                        'mock': [
+                            {'items': [1, 2], 'next_cursor': 'n1'},
+                            {'items': [3], 'next_cursor': None},
+                        ],
+                        'pagination': cursor_pagination(
+                            cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'
+                        ),
+                        'on_response': endpoint_on_response,
+                    }
+                },
             }
-        })
+        )
 
         result = client.fetch('ep')
         self.assertEqual(result, [[1, 2], [3]])
         self.assertEqual(seen['endpoint_calls'], 2)
 
     def test_endpoint_level_on_page_and_on_complete_work_with_custom_pagination(self):
-        'endpoint-level on_page/on_complete fire alongside custom pagination next_request'
+        "endpoint-level on_page/on_complete fire alongside custom pagination next_request"
         seen = {'pages': [], 'complete': None}
 
         def on_page(page, state):
@@ -2644,47 +3008,57 @@ class TestNonPaginatedCallbackPromotion(unittest.TestCase):
         def on_complete(pages, state):
             seen['complete'] = list(pages)
 
-        client = APIClient({
-            **simple_schema(),
-            'endpoints': {
-                'ep': {
-                    'mock': [
-                        {'items': [1, 2], 'next': True},
-                        {'items': [3], 'next': False},
-                    ],
-                    'pagination': {
-                        'next_request': lambda resp, state: {'params': {'page': state.get('page', 1) + 1}} if resp.get('next') else None,
-                    },
-                    'on_response': lambda resp, state: resp['items'],
-                    'on_page': on_page,
-                    'on_complete': on_complete,
-                }
+        client = APIClient(
+            {
+                **simple_schema(),
+                'endpoints': {
+                    'ep': {
+                        'mock': [
+                            {'items': [1, 2], 'next': True},
+                            {'items': [3], 'next': False},
+                        ],
+                        'pagination': {
+                            'next_request': lambda resp, state: {
+                                'params': {'page': state.get('page', 1) + 1}
+                            }
+                            if resp.get('next')
+                            else None,
+                        },
+                        'on_response': lambda resp, state: resp['items'],
+                        'on_page': on_page,
+                        'on_complete': on_complete,
+                    }
+                },
             }
-        })
+        )
 
         result = client.fetch('ep')
         self.assertEqual(result, [[1, 2], [3]])
         self.assertEqual(seen['pages'], [[1, 2], [3]])
         self.assertEqual(seen['complete'], [[1, 2], [3]])
 
-
-
-
     def test_stream_run_summary_includes_endpoint_source_retries_and_elapsed(self):
-        client = APIClient({
-            **simple_schema(),
-            'retry': {'max_attempts': 2, 'base_delay': 0.001, 'max_delay': 0.001},
-            'endpoints': {
-                'ep': {
-                    'path': '/items',
-                    'pagination': cursor_pagination(cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'),
-                }
+        client = APIClient(
+            {
+                **simple_schema(),
+                'retry': {'max_attempts': 2, 'base_delay': 0.001, 'max_delay': 0.001},
+                'endpoints': {
+                    'ep': {
+                        'path': '/items',
+                        'pagination': cursor_pagination(
+                            cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'
+                        ),
+                    }
+                },
             }
-        })
+        )
 
         responses = [
             requests.ConnectionError('boom'),
-            make_response(body={'items': [1], 'next_cursor': None}, headers={'Content-Type': 'application/json'}),
+            make_response(
+                body={'items': [1], 'next_cursor': None},
+                headers={'Content-Type': 'application/json'},
+            ),
         ]
 
         with patch.object(client._session, 'request', side_effect=responses):
@@ -2708,20 +3082,24 @@ class TestNonPaginatedCallbackPromotion(unittest.TestCase):
             seen.append(state.get('seconds_since_last_request'))
             return req
 
-        client = APIClient({
-            **simple_schema(),
-            'endpoints': {
-                'ep': {
-                    'mock': [
-                        {'items': [1], 'next_cursor': 'n1'},
-                        {'items': [2], 'next_cursor': 'n2'},
-                        {'items': [3], 'next_cursor': None},
-                    ],
-                    'pagination': cursor_pagination(cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'),
-                    'on_request': on_request,
-                }
+        client = APIClient(
+            {
+                **simple_schema(),
+                'endpoints': {
+                    'ep': {
+                        'mock': [
+                            {'items': [1], 'next_cursor': 'n1'},
+                            {'items': [2], 'next_cursor': 'n2'},
+                            {'items': [3], 'next_cursor': None},
+                        ],
+                        'pagination': cursor_pagination(
+                            cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'
+                        ),
+                        'on_request': on_request,
+                    }
+                },
             }
-        })
+        )
 
         pages = list(client.stream('ep'))
         self.assertEqual(pages, [[1], [2], [3]])
@@ -2730,7 +3108,6 @@ class TestNonPaginatedCallbackPromotion(unittest.TestCase):
         self.assertIsNone(seen[1])
         self.assertIsNotNone(seen[2])
         self.assertGreaterEqual(seen[2], 0.0)
-
 
     def test_run_state_build_summary_elapsed_is_non_negative(self):
         from rest_fetcher.client import _RunState
@@ -2753,18 +3130,26 @@ class TestNonPaginatedCallbackPromotion(unittest.TestCase):
             seen['errors_so_far'] = state.get('errors_so_far')
             return 'stop'
 
-        client = APIClient({
-            **simple_schema(),
-            'retry': {'max_attempts': 1},
-            'endpoints': {
-                'ep': {
-                    'path': '/items',
-                    'on_error': on_error,
-                }
+        client = APIClient(
+            {
+                **simple_schema(),
+                'retry': {'max_attempts': 1},
+                'endpoints': {
+                    'ep': {
+                        'path': '/items',
+                        'on_error': on_error,
+                    }
+                },
             }
-        })
+        )
 
-        with patch.object(client._session, 'request', return_value=make_response(status=500, body={'message': 'bad'}, headers={'Content-Type': 'application/json'})):
+        with patch.object(
+            client._session,
+            'request',
+            return_value=make_response(
+                status=500, body={'message': 'bad'}, headers={'Content-Type': 'application/json'}
+            ),
+        ):
             run = client.stream_run('ep')
             pages = list(run)
 
@@ -2778,19 +3163,23 @@ class TestNonPaginatedCallbackPromotion(unittest.TestCase):
 
     def test_max_pages_stopped_event_includes_progress_fields(self):
         events = []
-        client = APIClient({
-            **simple_schema(),
-            'on_event': lambda ev: events.append(ev),
-            'endpoints': {
-                'ep': {
-                    'mock': [
-                        {'items': [1], 'next_cursor': 'n1'},
-                        {'items': [2], 'next_cursor': None},
-                    ],
-                    'pagination': cursor_pagination(cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'),
-                }
+        client = APIClient(
+            {
+                **simple_schema(),
+                'on_event': lambda ev: events.append(ev),
+                'endpoints': {
+                    'ep': {
+                        'mock': [
+                            {'items': [1], 'next_cursor': 'n1'},
+                            {'items': [2], 'next_cursor': None},
+                        ],
+                        'pagination': cursor_pagination(
+                            cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'
+                        ),
+                    }
+                },
             }
-        })
+        )
         list(client.stream('ep', max_pages=1))
         stopped = next((e for e in events if e.kind == 'stopped'), None)
         self.assertIsNotNone(stopped)
@@ -2801,19 +3190,23 @@ class TestNonPaginatedCallbackPromotion(unittest.TestCase):
 
     def test_max_requests_stopped_event_includes_progress_fields(self):
         events = []
-        client = APIClient({
-            **simple_schema(),
-            'on_event': lambda ev: events.append(ev),
-            'endpoints': {
-                'ep': {
-                    'mock': [
-                        {'items': [1], 'next_cursor': 'n1'},
-                        {'items': [2], 'next_cursor': None},
-                    ],
-                    'pagination': cursor_pagination(cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'),
-                }
+        client = APIClient(
+            {
+                **simple_schema(),
+                'on_event': lambda ev: events.append(ev),
+                'endpoints': {
+                    'ep': {
+                        'mock': [
+                            {'items': [1], 'next_cursor': 'n1'},
+                            {'items': [2], 'next_cursor': None},
+                        ],
+                        'pagination': cursor_pagination(
+                            cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'
+                        ),
+                    }
+                },
             }
-        })
+        )
         list(client.stream('ep', max_requests=1))
         stopped = next((e for e in events if e.kind == 'stopped'), None)
         self.assertIsNotNone(stopped)
@@ -2824,18 +3217,26 @@ class TestNonPaginatedCallbackPromotion(unittest.TestCase):
 
     def test_error_path_request_end_event_includes_progress_fields(self):
         events = []
-        client = APIClient({
-            **simple_schema(),
-            'retry': {'max_attempts': 1},
-            'on_event': lambda ev: events.append(ev),
-            'endpoints': {
-                'ep': {
-                    'path': '/items',
-                    'on_error': lambda exc, state: 'skip',
-                }
+        client = APIClient(
+            {
+                **simple_schema(),
+                'retry': {'max_attempts': 1},
+                'on_event': lambda ev: events.append(ev),
+                'endpoints': {
+                    'ep': {
+                        'path': '/items',
+                        'on_error': lambda exc, state: 'skip',
+                    }
+                },
             }
-        })
-        with patch.object(client._session, 'request', return_value=make_response(status=500, body={}, headers={'Content-Type': 'application/json'})):
+        )
+        with patch.object(
+            client._session,
+            'request',
+            return_value=make_response(
+                status=500, body={}, headers={'Content-Type': 'application/json'}
+            ),
+        ):
             client.fetch('ep')
         req_end = next((e for e in events if e.kind == 'request_end'), None)
         self.assertIsNotNone(req_end)
@@ -2844,42 +3245,58 @@ class TestNonPaginatedCallbackPromotion(unittest.TestCase):
 
 
 class TestBoundedCapsBehaviour(unittest.TestCase):
-
     def test_fetch_max_pages_returns_partial_result_instead_of_raising(self):
-        'max_pages is a local guardrail: preserve completed pages and return them normally'
-        client = APIClient({
-            **simple_schema(),
-            'endpoints': {
-                'ep': {
-                    'mock': [
-                        {'items': [1, 2], 'next_cursor': 'n1'},
-                        {'items': [3], 'next_cursor': 'n2'},
-                        {'items': [4], 'next_cursor': None},
-                    ],
-                    'pagination': cursor_pagination(cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'),
-                }
+        "max_pages is a local guardrail: preserve completed pages and return them normally"
+        client = APIClient(
+            {
+                **simple_schema(),
+                'endpoints': {
+                    'ep': {
+                        'mock': [
+                            {'items': [1, 2], 'next_cursor': 'n1'},
+                            {'items': [3], 'next_cursor': 'n2'},
+                            {'items': [4], 'next_cursor': None},
+                        ],
+                        'pagination': cursor_pagination(
+                            cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'
+                        ),
+                    }
+                },
             }
-        })
+        )
 
         result = client.fetch('ep', max_pages=2)
         self.assertEqual(result, [[1, 2], [3]])
 
     def test_fetch_max_requests_returns_partial_result_instead_of_raising(self):
-        'max_requests is also local: stop before request N+1 and keep completed pages'
-        client = APIClient({
-            **simple_schema(),
-            'endpoints': {
-                'ep': {
-                    'path': '/items',
-                    'pagination': cursor_pagination(cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'),
-                }
+        "max_requests is also local: stop before request N+1 and keep completed pages"
+        client = APIClient(
+            {
+                **simple_schema(),
+                'endpoints': {
+                    'ep': {
+                        'path': '/items',
+                        'pagination': cursor_pagination(
+                            cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'
+                        ),
+                    }
+                },
             }
-        })
+        )
 
         responses = [
-            make_response(body={'items': [1, 2], 'next_cursor': 'n1'}, headers={'Content-Type': 'application/json'}),
-            make_response(body={'items': [3], 'next_cursor': 'n2'}, headers={'Content-Type': 'application/json'}),
-            make_response(body={'items': [4], 'next_cursor': None}, headers={'Content-Type': 'application/json'}),
+            make_response(
+                body={'items': [1, 2], 'next_cursor': 'n1'},
+                headers={'Content-Type': 'application/json'},
+            ),
+            make_response(
+                body={'items': [3], 'next_cursor': 'n2'},
+                headers={'Content-Type': 'application/json'},
+            ),
+            make_response(
+                body={'items': [4], 'next_cursor': None},
+                headers={'Content-Type': 'application/json'},
+            ),
         ]
 
         with patch.object(client._session, 'request', side_effect=responses):
@@ -2894,24 +3311,24 @@ class TestBoundedCapsBehaviour(unittest.TestCase):
             seen['stop'] = state.get('stop')
             return pages
 
-        client = APIClient({
-            **simple_schema(),
-            'endpoints': {
-                'ep': {
-                    'mock': [
-                        {'items': [1, 2], 'next_cursor': 'n1'},
-                        {'items': [3], 'next_cursor': 'n2'},
-                        {'items': [4], 'next_cursor': None},
-                    ],
-                    'pagination': cursor_pagination(
-                        cursor_param='cursor',
-                        next_cursor_path='next_cursor',
-                        data_path='items'
-                    ),
-                    'on_complete': on_complete,
-                }
+        client = APIClient(
+            {
+                **simple_schema(),
+                'endpoints': {
+                    'ep': {
+                        'mock': [
+                            {'items': [1, 2], 'next_cursor': 'n1'},
+                            {'items': [3], 'next_cursor': 'n2'},
+                            {'items': [4], 'next_cursor': None},
+                        ],
+                        'pagination': cursor_pagination(
+                            cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'
+                        ),
+                        'on_complete': on_complete,
+                    }
+                },
             }
-        })
+        )
 
         result = client.fetch('ep', max_pages=2)
         self.assertEqual(result, [[1, 2], [3]])
@@ -2927,25 +3344,34 @@ class TestBoundedCapsBehaviour(unittest.TestCase):
             seen['stop'] = state.get('stop')
             return pages
 
-        client = APIClient({
-            **simple_schema(),
-            'endpoints': {
-                'ep': {
-                    'path': '/items',
-                    'pagination': cursor_pagination(
-                        cursor_param='cursor',
-                        next_cursor_path='next_cursor',
-                        data_path='items'
-                    ),
-                    'on_complete': on_complete,
-                }
+        client = APIClient(
+            {
+                **simple_schema(),
+                'endpoints': {
+                    'ep': {
+                        'path': '/items',
+                        'pagination': cursor_pagination(
+                            cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'
+                        ),
+                        'on_complete': on_complete,
+                    }
+                },
             }
-        })
+        )
 
         responses = [
-            make_response(body={'items': [1, 2], 'next_cursor': 'n1'}, headers={'Content-Type': 'application/json'}),
-            make_response(body={'items': [3], 'next_cursor': 'n2'}, headers={'Content-Type': 'application/json'}),
-            make_response(body={'items': [4], 'next_cursor': None}, headers={'Content-Type': 'application/json'}),
+            make_response(
+                body={'items': [1, 2], 'next_cursor': 'n1'},
+                headers={'Content-Type': 'application/json'},
+            ),
+            make_response(
+                body={'items': [3], 'next_cursor': 'n2'},
+                headers={'Content-Type': 'application/json'},
+            ),
+            make_response(
+                body={'items': [4], 'next_cursor': None},
+                headers={'Content-Type': 'application/json'},
+            ),
         ]
 
         with patch.object(client._session, 'request', side_effect=responses):
@@ -2964,30 +3390,30 @@ class TestBoundedCapsBehaviour(unittest.TestCase):
             called['n'] += 1
             return None
 
-        client = APIClient({
-            **simple_schema(),
-            'endpoints': {
-                'ep': {
-                    'mock': [
-                        {'items': [1, 2], 'next_cursor': 'n1'},
-                        {'items': [3], 'next_cursor': None},
-                    ],
-                    'pagination': cursor_pagination(
-                        cursor_param='cursor',
-                        next_cursor_path='next_cursor',
-                        data_path='items'
-                    ),
-                    'on_complete': on_complete,
-                }
+        client = APIClient(
+            {
+                **simple_schema(),
+                'endpoints': {
+                    'ep': {
+                        'mock': [
+                            {'items': [1, 2], 'next_cursor': 'n1'},
+                            {'items': [3], 'next_cursor': None},
+                        ],
+                        'pagination': cursor_pagination(
+                            cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'
+                        ),
+                        'on_complete': on_complete,
+                    }
+                },
             }
-        })
+        )
 
         result = client.fetch('ep')
         self.assertEqual(result, [[1, 2], [3]])
         self.assertEqual(called['n'], 1)
 
     def test_stream_max_pages_runs_on_complete_and_exposes_stop_state(self):
-        'stream capped by max_pages still completes normally and on_complete sees summary/state stop'
+        "stream capped by max_pages still completes normally and on_complete sees summary/state stop"
         seen = {}
 
         def on_complete(summary, state):
@@ -2995,20 +3421,24 @@ class TestBoundedCapsBehaviour(unittest.TestCase):
             seen['stop'] = dict(state.get('stop', {}))
             return 'ignored in stream mode'
 
-        client = APIClient({
-            **simple_schema(),
-            'endpoints': {
-                'ep': {
-                    'mock': [
-                        {'items': [1, 2], 'next_cursor': 'n1'},
-                        {'items': [3], 'next_cursor': 'n2'},
-                        {'items': [4], 'next_cursor': None},
-                    ],
-                    'pagination': cursor_pagination(cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'),
-                    'on_complete': on_complete,
-                }
+        client = APIClient(
+            {
+                **simple_schema(),
+                'endpoints': {
+                    'ep': {
+                        'mock': [
+                            {'items': [1, 2], 'next_cursor': 'n1'},
+                            {'items': [3], 'next_cursor': 'n2'},
+                            {'items': [4], 'next_cursor': None},
+                        ],
+                        'pagination': cursor_pagination(
+                            cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'
+                        ),
+                        'on_complete': on_complete,
+                    }
+                },
             }
-        })
+        )
 
         pages = list(client.stream('ep', max_pages=2))
         # stream mode still yields page payloads; on_complete return value is ignored.
@@ -3019,9 +3449,8 @@ class TestBoundedCapsBehaviour(unittest.TestCase):
         self.assertEqual(seen['summary'].stop, StopSignal(kind='max_pages', limit=2, observed=2))
         self.assertEqual(seen['stop'], {'kind': 'max_pages', 'limit': 2, 'observed': 2})
 
-
     def test_stream_max_requests_runs_on_complete_and_exposes_stop_state(self):
-        'stream capped by max_requests still completes normally and on_complete sees summary/state stop'
+        "stream capped by max_requests still completes normally and on_complete sees summary/state stop"
         seen = {}
 
         def on_complete(summary, state):
@@ -3029,21 +3458,34 @@ class TestBoundedCapsBehaviour(unittest.TestCase):
             seen['stop'] = dict(state.get('stop', {}))
             return 'ignored in stream mode'
 
-        client = APIClient({
-            **simple_schema(),
-            'endpoints': {
-                'ep': {
-                    'path': '/items',
-                    'pagination': cursor_pagination(cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'),
-                    'on_complete': on_complete,
-                }
+        client = APIClient(
+            {
+                **simple_schema(),
+                'endpoints': {
+                    'ep': {
+                        'path': '/items',
+                        'pagination': cursor_pagination(
+                            cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'
+                        ),
+                        'on_complete': on_complete,
+                    }
+                },
             }
-        })
+        )
 
         responses = [
-            make_response(body={'items': [1, 2], 'next_cursor': 'n1'}, headers={'Content-Type': 'application/json'}),
-            make_response(body={'items': [3], 'next_cursor': 'n2'}, headers={'Content-Type': 'application/json'}),
-            make_response(body={'items': [4], 'next_cursor': None}, headers={'Content-Type': 'application/json'}),
+            make_response(
+                body={'items': [1, 2], 'next_cursor': 'n1'},
+                headers={'Content-Type': 'application/json'},
+            ),
+            make_response(
+                body={'items': [3], 'next_cursor': 'n2'},
+                headers={'Content-Type': 'application/json'},
+            ),
+            make_response(
+                body={'items': [4], 'next_cursor': None},
+                headers={'Content-Type': 'application/json'},
+            ),
         ]
 
         with patch.object(client._session, 'request', side_effect=responses):
@@ -3063,50 +3505,72 @@ class TestBoundedCapsBehaviour(unittest.TestCase):
             seen['summary'] = summary
             seen['stop'] = state.get('stop')
 
-        client = APIClient({
-            **simple_schema(),
-            'endpoints': {
-                'ep': {
-                    'mock': [
-                        {'items': [1, 2], 'next_cursor': 'n1'},
-                        {'items': [3], 'next_cursor': None},
-                    ],
-                    'pagination': cursor_pagination(cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'),
-                    'on_complete': on_complete,
-                }
+        client = APIClient(
+            {
+                **simple_schema(),
+                'endpoints': {
+                    'ep': {
+                        'mock': [
+                            {'items': [1, 2], 'next_cursor': 'n1'},
+                            {'items': [3], 'next_cursor': None},
+                        ],
+                        'pagination': cursor_pagination(
+                            cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'
+                        ),
+                        'on_complete': on_complete,
+                    }
+                },
             }
-        })
+        )
 
         pages = list(client.stream('ep', max_pages=10, max_requests=10))
 
         self.assertEqual(pages, [[1, 2], [3]])
-        self.assertEqual(seen['summary'], StreamSummary(pages=2, requests=2, stop=StopSignal(kind='next_request_none'), endpoint='ep', source='live', retries=0, elapsed_seconds=seen['summary'].elapsed_seconds))
+        self.assertEqual(
+            seen['summary'],
+            StreamSummary(
+                pages=2,
+                requests=2,
+                stop=StopSignal(kind='next_request_none'),
+                endpoint='ep',
+                source='live',
+                retries=0,
+                elapsed_seconds=seen['summary'].elapsed_seconds,
+            ),
+        )
         self.assertGreaterEqual(seen['summary'].elapsed_seconds, 0.0)
         self.assertEqual(seen['stop'], {'kind': 'next_request_none'})
 
     def test_time_limit_still_raises_and_does_not_call_on_complete(self):
-        'time_limit remains destructive and does not turn into normal completion'
+        "time_limit remains destructive and does not turn into normal completion"
         seen = {'called': False}
 
         def on_complete(summary, state):
             seen['called'] = True
             return summary
 
-        client = APIClient({
-            **simple_schema(),
-            'endpoints': {
-                'ep': {
-                    'mock': [
-                        {'items': [1, 2], 'next_cursor': 'n1'},
-                        {'items': [3], 'next_cursor': None},
-                    ],
-                    'pagination': cursor_pagination(cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'),
-                    'on_complete': on_complete,
-                }
+        client = APIClient(
+            {
+                **simple_schema(),
+                'endpoints': {
+                    'ep': {
+                        'mock': [
+                            {'items': [1, 2], 'next_cursor': 'n1'},
+                            {'items': [3], 'next_cursor': None},
+                        ],
+                        'pagination': cursor_pagination(
+                            cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'
+                        ),
+                        'on_complete': on_complete,
+                    }
+                },
             }
-        })
+        )
 
-        with patch('rest_fetcher.context.time.monotonic', side_effect=itertools.chain([0.0, 0.0], itertools.repeat(10.0))):
+        with patch(
+            'rest_fetcher.context.time.monotonic',
+            side_effect=itertools.chain([0.0, 0.0], itertools.repeat(10.0)),
+        ):
             with self.assertRaises(DeadlineExceeded):
                 client.fetch('ep', time_limit=5.0)
 
@@ -3115,9 +3579,8 @@ class TestBoundedCapsBehaviour(unittest.TestCase):
 
 # Item 6 — retry: programming errors not retried; KeyError regression
 class TestRetryProgrammingErrors(unittest.TestCase):
-
     def test_key_error_in_request_fn_not_retried(self):
-        '''regression: KeyError inside request_fn is a programmer error, must not retry'''
+        """regression: KeyError inside request_fn is a programmer error, must not retry"""
         handler = RetryHandler({'max_attempts': 3, 'base_delay': 0}, {})
         call_count = [0]
 
@@ -3130,8 +3593,7 @@ class TestRetryProgrammingErrors(unittest.TestCase):
             with self.assertRaises(KeyError):
                 handler.execute(bad_fn)
 
-        self.assertEqual(call_count[0], 1,
-            'KeyError is a programming error — must not be retried')
+        self.assertEqual(call_count[0], 1, 'KeyError is a programming error — must not be retried')
 
     def test_attribute_error_not_retried(self):
         handler = RetryHandler({'max_attempts': 3, 'base_delay': 0}, {})
@@ -3161,13 +3623,16 @@ class TestRetryProgrammingErrors(unittest.TestCase):
 
         self.assertEqual(call_count[0], 1)
 
+
 class TestStateView(unittest.TestCase):
-    '''StateView raises StateViewMutationError on all write operations'''
+    """StateView raises StateViewMutationError on all write operations"""
 
     def setUp(self):
         from rest_fetcher.pagination import StateView
+
         self.StateView = StateView
         from rest_fetcher import StateViewMutationError
+
         self.MutErr = StateViewMutationError
 
     def _view(self, d=None):
@@ -3232,39 +3697,45 @@ class TestStateView(unittest.TestCase):
             self.assertIn('update_state', str(e))
 
     def test_mutation_raised_as_callback_error(self):
-        '''StateViewMutationError from inside a callback is wrapped in CallbackError'''
+        """StateViewMutationError from inside a callback is wrapped in CallbackError"""
         from rest_fetcher import CallbackError
 
         def bad_next_req(resp, state):
-            state['x'] = 1   # raises StateViewMutationError
+            state['x'] = 1  # raises StateViewMutationError
             return None
 
-        client = APIClient({
-            **simple_schema(),
-            'endpoints': {'ep': {
-                'mock': [{'items': [1]}],
-                'pagination': {
-                    'next_request': bad_next_req,
+        client = APIClient(
+            {
+                **simple_schema(),
+                'endpoints': {
+                    'ep': {
+                        'mock': [{'items': [1]}],
+                        'pagination': {
+                            'next_request': bad_next_req,
+                        },
+                        'on_response': lambda r, s: r.get('items', []),
+                    }
                 },
-                'on_response': lambda r, s: r.get('items', []),
-            }}
-        })
+            }
+        )
         with self.assertRaises(CallbackError) as ctx:
             client.fetch('ep')
-        self.assertIsInstance(ctx.exception.cause.__class__.__mro__[0],
-                              type)   # cause is set
+        self.assertIsInstance(ctx.exception.cause.__class__.__mro__[0], type)  # cause is set
         self.assertEqual(ctx.exception.callback_name, 'next_request')
 
 
 class TestRequestInState(unittest.TestCase):
-    '''_request key in callback state snapshot'''
+    """_request key in callback state snapshot"""
 
     def _run_pages(self, mock_pages, on_response=None, next_request=None, update_state=None):
         from rest_fetcher.pagination import CycleRunner
+
         states_seen = []
 
         def capturing_next_request(resp, state):
-            states_seen.append(dict(state))   # full snapshot; access _request via states[n]['_request']
+            states_seen.append(
+                dict(state)
+            )  # full snapshot; access _request via states[n]['_request']
             if next_request:
                 return next_request(resp, state)
             return None
@@ -3292,18 +3763,19 @@ class TestRequestInState(unittest.TestCase):
         return pages, states_seen
 
     def test_request_present_in_state_snapshot(self):
-        '''_request key is populated in callback state on every page'''
+        """_request key is populated in callback state on every page"""
         _, states = self._run_pages([{'items': [1, 2, 3]}])
         self.assertIn('_request', states[0])
 
     def test_request_contains_params(self):
-        '''_request[params] reflects what was actually sent'''
+        """_request[params] reflects what was actually sent"""
         _, states = self._run_pages([{'items': [1]}])
         self.assertEqual(states[0]['_request']['params'], {'page': 1, 'size': 10})
 
     def test_request_params_advance_across_pages(self):
-        '''_request[params][page] reflects page number sent on each page'''
+        """_request[params][page] reflects page number sent on each page"""
         from rest_fetcher.pagination import CycleRunner
+
         pages_seen_params = []
         page_num = [1]
 
@@ -3314,12 +3786,15 @@ class TestRequestInState(unittest.TestCase):
                 return None
             return {'params': {'page': page_num[0], 'size': 10}}
 
-        runner = CycleRunner({
-            'next_request': next_req,
-            'on_response': lambda r, s: r.get('items', []),
-        })
+        runner = CycleRunner(
+            {
+                'next_request': next_req,
+                'on_response': lambda r, s: r.get('items', []),
+            }
+        )
         mock = [{'items': [1, 2]}, {'items': [3, 4]}, {'items': [5, 6]}]
         fetch_count = [0]
+
         def mock_fetch(req, ctx=None, *, run_state):
             idx = min(fetch_count[0], len(mock) - 1)
             fetch_count[0] += 1
@@ -3333,7 +3808,7 @@ class TestRequestInState(unittest.TestCase):
         self.assertEqual(pages_seen_params[2]['page'], 3)
 
     def test_custom_next_request_reads_page_from_request(self):
-        '''custom callback can read current page from _request without update_state'''
+        """custom callback can read current page from _request without update_state"""
         from rest_fetcher.pagination import CycleRunner
 
         call_order = []
@@ -3346,11 +3821,14 @@ class TestRequestInState(unittest.TestCase):
                 return None
             return {'params': {'page': nxt}}
 
-        runner = CycleRunner({
-            'next_request': next_req,
-            'on_response': lambda r, s: r.get('items', []),
-        })
+        runner = CycleRunner(
+            {
+                'next_request': next_req,
+                'on_response': lambda r, s: r.get('items', []),
+            }
+        )
         fetch_count = [0]
+
         def mock_fetch(req, ctx=None, *, run_state):
             fetch_count[0] += 1
             return outcome({'items': [fetch_count[0]]}, req)
@@ -3358,10 +3836,11 @@ class TestRequestInState(unittest.TestCase):
         initial = {'method': 'GET', 'url': 'https://x.com', 'params': {'page': 1}}
         list(runner.run(mock_fetch, initial))
 
-        self.assertEqual(call_order, [1, 2, 3],
-            'callback reads page 1, 2, 3 from _request without any state mutation')
-
-
+        self.assertEqual(
+            call_order,
+            [1, 2, 3],
+            'callback reads page 1, 2, 3 from _request without any state mutation',
+        )
 
     def test_on_complete_state_excludes_response_headers_and_stop_signal(self):
         complete_state = {}
@@ -3378,33 +3857,42 @@ class TestRequestInState(unittest.TestCase):
             },
         }
         client = APIClient(schema)
-        with patch.object(requests.Session, 'request', return_value=make_response(body={'ok': True}, headers={'X-Test': '1'})):
+        with patch.object(
+            requests.Session,
+            'request',
+            return_value=make_response(body={'ok': True}, headers={'X-Test': '1'}),
+        ):
             result = client.fetch('users')
         self.assertEqual(result, [{'ok': True}])
         self.assertNotIn('_response_headers', complete_state)
         self.assertNotIn('_stop_signal', complete_state)
+
     def test_request_not_in_on_complete_state(self):
-        '''on_complete receives final_state without _request (run is done)'''
+        """on_complete receives final_state without _request (run is done)"""
         from rest_fetcher.pagination import CycleRunner
+
         complete_state = {}
 
-        runner = CycleRunner({
-            'next_request': lambda r, s: None,
-            'on_response': lambda r, s: r.get('items', []),
-            'on_complete': lambda pages, state: complete_state.update(state) or pages,
-        })
+        runner = CycleRunner(
+            {
+                'next_request': lambda r, s: None,
+                'on_response': lambda r, s: r.get('items', []),
+                'on_complete': lambda pages, state: complete_state.update(state) or pages,
+            }
+        )
+
         def mock_fetch(req, ctx=None, *, run_state):
             return outcome({'items': [1]}, req)
+
         initial = {'method': 'GET', 'url': 'https://x.com', 'params': {}}
         list(runner.run(mock_fetch, initial))
         # on_complete state does not include _request (no current request at completion)
         self.assertNotIn('_request', complete_state)
 
-
     def test_request_in_state_contains_auth_headers(self):
-        '''_request in callback state includes auth headers injected by auth handler —
+        """_request in callback state includes auth headers injected by auth handler —
         verifies _request is captured post-auth, not pre-auth.
-        this test will catch future refactors that capture _request too early.'''
+        this test will catch future refactors that capture _request too early."""
 
         observed_headers = {}
 
@@ -3414,36 +3902,39 @@ class TestRequestInState(unittest.TestCase):
             return None
 
         # use a full APIClient with bearer auth so auth injection actually runs
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'auth': {'type': 'bearer', 'token': 'secret-token'},
-            'endpoints': {
-                'ep': {
-                    'method': 'GET', 'path': '/items',
-                    'mock': [{'items': [1, 2]}],
-                    'pagination': {
-                        'next_request': capturing_next_req,
-                    },
-                    'on_response': lambda r, s: r.get('items', []),
-                }
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'auth': {'type': 'bearer', 'token': 'secret-token'},
+                'endpoints': {
+                    'ep': {
+                        'method': 'GET',
+                        'path': '/items',
+                        'mock': [{'items': [1, 2]}],
+                        'pagination': {
+                            'next_request': capturing_next_req,
+                        },
+                        'on_response': lambda r, s: r.get('items', []),
+                    }
+                },
             }
-        })
+        )
         client.fetch('ep')
 
         self.assertIn(
-            'Authorization', observed_headers,
-            '_request should contain Authorization header added by bearer auth'
+            'Authorization',
+            observed_headers,
+            '_request should contain Authorization header added by bearer auth',
         )
         self.assertTrue(
             observed_headers['Authorization'].startswith('Bearer '),
-            f"Authorization header should start with Bearer, got: {observed_headers.get('Authorization')!r}"
+            f'Authorization header should start with Bearer, got: {observed_headers.get("Authorization")!r}',
         )
 
-
     def test_request_snapshot_isolates_live_request_from_callback_mutation(self):
-        '''mutating state["_request"]["params"] inside a callback must not affect the
+        """mutating state["_request"]["params"] inside a callback must not affect the
         live request dict used for the next page fetch. _copy_request_for_snapshot
-        provides one-level copies of params/headers/json/data for this purpose.'''
+        provides one-level copies of params/headers/json/data for this purpose."""
         from rest_fetcher.pagination import CycleRunner
 
         requests_seen = []
@@ -3459,10 +3950,12 @@ class TestRequestInState(unittest.TestCase):
                 return None
             return {'params': {'page': page_num[0]}}
 
-        runner = CycleRunner({
-            'next_request': next_req,
-            'on_response': lambda r, s: r.get('items', []),
-        })
+        runner = CycleRunner(
+            {
+                'next_request': next_req,
+                'on_response': lambda r, s: r.get('items', []),
+            }
+        )
 
         def mock_fetch(req, ctx=None, *, run_state):
             requests_seen.append(dict(req.get('params', {})))
@@ -3471,25 +3964,33 @@ class TestRequestInState(unittest.TestCase):
         initial = {'method': 'GET', 'url': 'https://x.com', 'params': {'page': 1}}
         list(runner.run(mock_fetch, initial))
 
-        self.assertNotIn('injected', requests_seen[1],
-            'callback mutation of _request snapshot must not affect the live next request')
+        self.assertNotIn(
+            'injected',
+            requests_seen[1],
+            'callback mutation of _request snapshot must not affect the live next request',
+        )
 
 
 class TestExamplePatterns(unittest.TestCase):
-    '''integration tests for patterns demonstrated in examples.py'''
+    """integration tests for patterns demonstrated in examples.py"""
 
     def test_three_layer_header_merge(self):
-        '''client headers + endpoint headers + call-time headers all present, later wins'''
+        """client headers + endpoint headers + call-time headers all present, later wins"""
         with patch('requests.Session.request') as mock_req:
             mock_req.return_value = make_response(200, {'ok': True})
-            client = APIClient({
-                'base_url': 'https://api.example.com/v1',
-                'headers': {'X-Client': 'v1', 'Accept': 'application/json'},
-                'endpoints': {'ep': {
-                    'method': 'GET', 'path': '/x',
-                    'headers': {'X-Endpoint': 'yes', 'Accept': 'application/msgpack'},
-                }}
-            })
+            client = APIClient(
+                {
+                    'base_url': 'https://api.example.com/v1',
+                    'headers': {'X-Client': 'v1', 'Accept': 'application/json'},
+                    'endpoints': {
+                        'ep': {
+                            'method': 'GET',
+                            'path': '/x',
+                            'headers': {'X-Endpoint': 'yes', 'Accept': 'application/msgpack'},
+                        }
+                    },
+                }
+            )
             client.fetch('ep', headers={'X-Call': 'now', 'Accept': 'text/plain'})
 
         _, kwargs = mock_req.call_args
@@ -3501,31 +4002,40 @@ class TestExamplePatterns(unittest.TestCase):
         self.assertIn('X-Client', sent_headers, 'client header still present')
 
     def test_response_parser_inheritance_and_endpoint_override(self):
-        '''client response_parser inherited by all endpoints; endpoint override takes full precedence'''
+        """client response_parser inherited by all endpoints; endpoint override takes full precedence"""
         with patch('requests.Session.request') as mock_req:
             mock_req.side_effect = [
                 make_response(200, {'data': {'result': 42}}),
                 make_response(200, {'data': {'result': 99}, 'extra': True}),
             ]
-            client = APIClient({
-                'base_url': 'https://api.example.com/v1',
-                'response_parser': lambda resp, parsed: parsed.get('data', parsed),
-                'endpoints': {
-                    'normal': {'method': 'GET', 'path': '/a'},
-                    'raw':    {'method': 'GET', 'path': '/b',
-                               'response_parser': lambda resp, parsed: parsed},
+            client = APIClient(
+                {
+                    'base_url': 'https://api.example.com/v1',
+                    'response_parser': lambda resp, parsed: parsed.get('data', parsed),
+                    'endpoints': {
+                        'normal': {'method': 'GET', 'path': '/a'},
+                        'raw': {
+                            'method': 'GET',
+                            'path': '/b',
+                            'response_parser': lambda resp, parsed: parsed,
+                        },
+                    },
                 }
-            })
+            )
             result_normal = client.fetch('normal')
-            result_raw    = client.fetch('raw')
+            result_raw = client.fetch('raw')
 
         self.assertEqual(result_normal, {'result': 42}, 'client parser unwraps data')
-        self.assertEqual(result_raw, {'data': {'result': 99}, 'extra': True},
-            'endpoint override returns full response')
+        self.assertEqual(
+            result_raw,
+            {'data': {'result': 99}, 'extra': True},
+            'endpoint override returns full response',
+        )
 
     def test_update_state_persists_across_pages(self):
-        '''update_state return dict is merged into page_state — values visible on next page'''
+        """update_state return dict is merged into page_state — values visible on next page"""
         from rest_fetcher.pagination import CycleRunner
+
         states_in_next_request = []
         call_count = [0]
 
@@ -3537,17 +4047,22 @@ class TestExamplePatterns(unittest.TestCase):
             call_count[0] += 1
             return None if call_count[0] >= 3 else {'params': {'page': call_count[0] + 1}}
 
-        runner = CycleRunner({
-            'next_request': next_req,
-            'update_state': update_st,
-            'on_response': lambda r, s: r.get('items', []),
-        })
+        runner = CycleRunner(
+            {
+                'next_request': next_req,
+                'update_state': update_st,
+                'on_response': lambda r, s: r.get('items', []),
+            }
+        )
 
         pages = [{'items': [1, 2, 3]}, {'items': [4, 5]}, {'items': [6]}]
         fetch_count = [0]
+
         def mock_fetch(req, ctx=None, *, run_state):
-            idx = fetch_count[0]; fetch_count[0] += 1
+            idx = fetch_count[0]
+            fetch_count[0] += 1
             return outcome(pages[idx], req)
+
         initial = {'method': 'GET', 'url': 'https://x.com', 'params': {'page': 1}}
         list(runner.run(mock_fetch, initial))
 
@@ -3556,21 +4071,28 @@ class TestExamplePatterns(unittest.TestCase):
         # page 1: update_state returned rows_seen=3, next_request sees 3.
         # page 2: update_state returned rows_seen=5 (3+2), next_request sees 5.
         # page 3: update_state returned rows_seen=6 (5+1), next_request sees 6.
-        self.assertEqual(states_in_next_request[0], 3,     'page 1: update_state runs first, sees 3')
-        self.assertEqual(states_in_next_request[1], 5,     'page 2: sees 5 rows (3+2)')
-        self.assertEqual(states_in_next_request[2], 6,     'page 3: sees 6 rows (3+2+1)')
+        self.assertEqual(states_in_next_request[0], 3, 'page 1: update_state runs first, sees 3')
+        self.assertEqual(states_in_next_request[1], 5, 'page 2: sees 5 rows (3+2)')
+        self.assertEqual(states_in_next_request[2], 6, 'page 3: sees 6 rows (3+2+1)')
 
     def test_params_mode_replace_clears_original_params(self):
-        '''params_mode=replace: page 2+ sends only continuation token, not original filter'''
+        """params_mode=replace: page 2+ sends only continuation token, not original filter"""
         from rest_fetcher.pagination import CycleRunner
+
         requests_seen = []
         fetch_count = [0]
 
         def mock_fetch(req, ctx=None, *, run_state):
             requests_seen.append(dict(req.get('params', {})))
             fetch_count[0] += 1
-            return outcome(({'results': [fetch_count[0]], 'next_token': 'tok2'} if fetch_count[0] == 1
-                    else {'results': [fetch_count[0]]}), req)
+            return outcome(
+                (
+                    {'results': [fetch_count[0]], 'next_token': 'tok2'}
+                    if fetch_count[0] == 1
+                    else {'results': [fetch_count[0]]}
+                ),
+                req,
+            )
 
         def next_req(resp, state):
             token = resp.get('next_token')
@@ -3578,22 +4100,29 @@ class TestExamplePatterns(unittest.TestCase):
                 return None
             return {'params': {'token': token}, 'params_mode': 'replace'}
 
-        runner = CycleRunner({
-            'next_request': next_req,
-            'on_response': lambda r, s: r.get('results', []),
-        })
-        initial = {'method': 'GET', 'url': 'https://x.com',
-                   'params': {'q': 'python', 'category': 'books'}}
+        runner = CycleRunner(
+            {
+                'next_request': next_req,
+                'on_response': lambda r, s: r.get('results', []),
+            }
+        )
+        initial = {
+            'method': 'GET',
+            'url': 'https://x.com',
+            'params': {'q': 'python', 'category': 'books'},
+        }
         list(runner.run(mock_fetch, initial))
 
         # page 1: original filter params
         self.assertEqual(requests_seen[0], {'q': 'python', 'category': 'books'})
         # page 2: only the continuation token; filter params cleared
         self.assertEqual(requests_seen[1], {'token': 'tok2'})
-        self.assertNotIn('q', requests_seen[1], 'filter param must be cleared by params_mode=replace')
+        self.assertNotIn(
+            'q', requests_seen[1], 'filter param must be cleared by params_mode=replace'
+        )
 
     def test_paginated_playback_round_trip(self):
-        '''playback save/load: multi-page fetch saved as raw responses, reloaded through callbacks'''
+        """playback save/load: multi-page fetch saved as raw responses, reloaded through callbacks"""
         import os
         import tempfile
 
@@ -3602,33 +4131,53 @@ class TestExamplePatterns(unittest.TestCase):
         try:
             with patch('requests.Session.request') as mock_req:
                 mock_req.side_effect = [
-                    make_response(200, {'items': [1, 2], 'next': True}, headers={'Content-Type': 'application/json'}),
-                    make_response(200, {'items': [3, 4]}, headers={'Content-Type': 'application/json'}),
+                    make_response(
+                        200,
+                        {'items': [1, 2], 'next': True},
+                        headers={'Content-Type': 'application/json'},
+                    ),
+                    make_response(
+                        200, {'items': [3, 4]}, headers={'Content-Type': 'application/json'}
+                    ),
                 ]
-                client = APIClient({
-                    'base_url': 'https://api.example.com/v1',
-                    'endpoints': {'ep': {
-                        'method': 'GET', 'path': '/items',
-                        'playback': {'path': fixture_path, 'mode': 'save'},
-                        'pagination': {
-                            'next_request': lambda r, s: {'params': {'page': 2}} if r.get('next') else None,
+                client = APIClient(
+                    {
+                        'base_url': 'https://api.example.com/v1',
+                        'endpoints': {
+                            'ep': {
+                                'method': 'GET',
+                                'path': '/items',
+                                'playback': {'path': fixture_path, 'mode': 'save'},
+                                'pagination': {
+                                    'next_request': lambda r, s: {'params': {'page': 2}}
+                                    if r.get('next')
+                                    else None,
+                                },
+                                'on_response': lambda r, s: r.get('items', []),
+                            }
                         },
-                        'on_response': lambda r, s: r.get('items', []),
-                    }}
-                })
+                    }
+                )
                 saved = client.fetch('ep')
 
-            client2 = APIClient({
-                'base_url': 'https://api.example.com/v1',
-                'endpoints': {'ep': {
-                    'method': 'GET', 'path': '/items',
-                    'playback': {'path': fixture_path, 'mode': 'load'},
-                    'pagination': {
-                        'next_request': lambda r, s: {'params': {'page': 2}} if r.get('next') else None,
+            client2 = APIClient(
+                {
+                    'base_url': 'https://api.example.com/v1',
+                    'endpoints': {
+                        'ep': {
+                            'method': 'GET',
+                            'path': '/items',
+                            'playback': {'path': fixture_path, 'mode': 'load'},
+                            'pagination': {
+                                'next_request': lambda r, s: {'params': {'page': 2}}
+                                if r.get('next')
+                                else None,
+                            },
+                            'on_response': lambda r, s: r.get('items', []),
+                        }
                     },
-                    'on_response': lambda r, s: r.get('items', []),
-                }}
-            })
+                }
+            )
             loaded = client2.fetch('ep')
 
             self.assertEqual(saved, loaded, 'loaded fixture must match original fetch')
@@ -3638,25 +4187,28 @@ class TestExamplePatterns(unittest.TestCase):
 
 # Item 2 — SchemaBuilder
 class TestSchemaBuilder(unittest.TestCase):
-
     def test_build_returns_plain_dict(self):
         from rest_fetcher.types import SchemaBuilder
+
         schema = SchemaBuilder('https://api.example.com').endpoint('ep').build()
         self.assertIsInstance(schema, dict)
 
     def test_minimal_build_passes_validate(self):
         from rest_fetcher.types import SchemaBuilder
+
         schema = SchemaBuilder('https://api.example.com').endpoint('ep').build()
         validate(schema)  # must not raise
 
     def test_bearer_token(self):
         from rest_fetcher.types import SchemaBuilder
+
         schema = SchemaBuilder('https://api.example.com').bearer('abc').endpoint('ep').build()
         self.assertEqual(schema['auth']['type'], 'bearer')
         self.assertEqual(schema['auth']['token'], 'abc')
 
     def test_bearer_callback(self):
         from rest_fetcher.types import SchemaBuilder
+
         cb = lambda state: 'tok'
         schema = SchemaBuilder('https://api.example.com').bearer(cb).endpoint('ep').build()
         self.assertEqual(schema['auth']['type'], 'bearer')
@@ -3664,51 +4216,77 @@ class TestSchemaBuilder(unittest.TestCase):
 
     def test_basic_auth(self):
         from rest_fetcher.types import SchemaBuilder
-        schema = (SchemaBuilder('https://api.example.com')
-                  .basic('user', 'pass').endpoint('ep').build())
+
+        schema = (
+            SchemaBuilder('https://api.example.com').basic('user', 'pass').endpoint('ep').build()
+        )
         self.assertEqual(schema['auth'], {'type': 'basic', 'username': 'user', 'password': 'pass'})
 
     def test_timeout(self):
         from rest_fetcher.types import SchemaBuilder
+
         schema = SchemaBuilder('https://api.example.com').timeout(30).endpoint('ep').build()
         self.assertEqual(schema['timeout'], 30)
 
     def test_timeout_tuple(self):
         from rest_fetcher.types import SchemaBuilder
+
         schema = SchemaBuilder('https://api.example.com').timeout((5, 60)).endpoint('ep').build()
         self.assertEqual(schema['timeout'], (5, 60))
 
     def test_retry(self):
         from rest_fetcher.types import SchemaBuilder
-        schema = (SchemaBuilder('https://api.example.com')
-                  .retry(max_attempts=5, backoff='linear').endpoint('ep').build())
+
+        schema = (
+            SchemaBuilder('https://api.example.com')
+            .retry(max_attempts=5, backoff='linear')
+            .endpoint('ep')
+            .build()
+        )
         self.assertEqual(schema['retry']['max_attempts'], 5)
         self.assertEqual(schema['retry']['backoff'], 'linear')
 
     def test_state(self):
         from rest_fetcher.types import SchemaBuilder
-        schema = (SchemaBuilder('https://api.example.com')
-                  .state(api_key='secret', region='eu').endpoint('ep').build())
+
+        schema = (
+            SchemaBuilder('https://api.example.com')
+            .state(api_key='secret', region='eu')
+            .endpoint('ep')
+            .build()
+        )
         self.assertEqual(schema['state']['api_key'], 'secret')
 
     def test_scrub_headers(self):
         from rest_fetcher.types import SchemaBuilder
-        schema = (SchemaBuilder('https://api.example.com')
-                  .scrub_headers('X-Tenant-Id', 'X-App-Token').endpoint('ep').build())
+
+        schema = (
+            SchemaBuilder('https://api.example.com')
+            .scrub_headers('X-Tenant-Id', 'X-App-Token')
+            .endpoint('ep')
+            .build()
+        )
         self.assertIn('X-Tenant-Id', schema['scrub_headers'])
 
     def test_scrub_query_params(self):
         from rest_fetcher.types import SchemaBuilder
-        schema = (SchemaBuilder('https://api.example.com')
-                  .scrub_query_params('tenant_token', 'signature').endpoint('ep').build())
+
+        schema = (
+            SchemaBuilder('https://api.example.com')
+            .scrub_query_params('tenant_token', 'signature')
+            .endpoint('ep')
+            .build()
+        )
         self.assertIn('tenant_token', schema['scrub_query_params'])
 
     def test_endpoint_kwargs_passed_through(self):
         from rest_fetcher.types import SchemaBuilder
-        schema = (SchemaBuilder('https://api.example.com')
-                  .endpoint('users', method='GET', path='/users',
-                             params={'active': True}, timeout=60)
-                  .build())
+
+        schema = (
+            SchemaBuilder('https://api.example.com')
+            .endpoint('users', method='GET', path='/users', params={'active': True}, timeout=60)
+            .build()
+        )
         ep = schema['endpoints']['users']
         self.assertEqual(ep['method'], 'GET')
         self.assertEqual(ep['path'], '/users')
@@ -3717,23 +4295,28 @@ class TestSchemaBuilder(unittest.TestCase):
 
     def test_multiple_endpoints(self):
         from rest_fetcher.types import SchemaBuilder
-        schema = (SchemaBuilder('https://api.example.com')
-                  .endpoint('list_users', path='/users')
-                  .endpoint('create_user', method='POST', path='/users')
-                  .build())
+
+        schema = (
+            SchemaBuilder('https://api.example.com')
+            .endpoint('list_users', path='/users')
+            .endpoint('create_user', method='POST', path='/users')
+            .build()
+        )
         self.assertIn('list_users', schema['endpoints'])
         self.assertIn('create_user', schema['endpoints'])
 
     def test_chaining_returns_builder(self):
         from rest_fetcher.types import SchemaBuilder
+
         b = SchemaBuilder('https://api.example.com')
         self.assertIs(b.bearer('tok'), b)
         self.assertIs(b.timeout(30), b)
         self.assertIs(b.endpoint('ep'), b)
 
     def test_build_is_independent_copy(self):
-        '''build() must return a copy — mutating result does not affect builder'''
+        """build() must return a copy — mutating result does not affect builder"""
         from rest_fetcher.types import SchemaBuilder
+
         builder = SchemaBuilder('https://api.example.com').endpoint('ep')
         s1 = builder.build()
         s1['extra'] = 'injected'
@@ -3742,39 +4325,46 @@ class TestSchemaBuilder(unittest.TestCase):
 
     def test_builder_produces_valid_schema_with_oauth2(self):
         from rest_fetcher.types import SchemaBuilder
-        schema = (SchemaBuilder('https://api.example.com')
-                  .oauth2('https://auth.example.com/token', 'cid', 'csecret', scope='read')
-                  .endpoint('ep').build())
+
+        schema = (
+            SchemaBuilder('https://api.example.com')
+            .oauth2('https://auth.example.com/token', 'cid', 'csecret', scope='read')
+            .endpoint('ep')
+            .build()
+        )
         validate(schema)
 
     def test_builder_produces_client_that_works(self):
-        '''end-to-end: SchemaBuilder -> APIClient -> fetch'''
+        """end-to-end: SchemaBuilder -> APIClient -> fetch"""
         from rest_fetcher.types import SchemaBuilder
-        schema = (SchemaBuilder('https://api.example.com')
-                  .bearer('test-token')
-                  .timeout(30)
-                  .endpoint('ep', method='GET', path='/test',
-                             mock=[{'result': 'ok'}])
-                  .build())
+
+        schema = (
+            SchemaBuilder('https://api.example.com')
+            .bearer('test-token')
+            .timeout(30)
+            .endpoint('ep', method='GET', path='/test', mock=[{'result': 'ok'}])
+            .build()
+        )
         client = APIClient(schema)
         result = client.fetch('ep')
         self.assertEqual(result, {'result': 'ok'})
 
     def test_schema_validation_on_invalid_builder_output(self):
-        '''SchemaBuilder output goes through normal validate() — invalid values caught'''
+        """SchemaBuilder output goes through normal validate() — invalid values caught"""
         from rest_fetcher.types import SchemaBuilder
+
         schema = SchemaBuilder('https://api.example.com').endpoint('ep').build()
         schema['timeout'] = -1  # invalid — validate should catch this
         with self.assertRaises(SchemaError):
             validate(schema)
 
 
-
 class TestOperationContext(unittest.TestCase):
-    '''unit tests for OperationContext guards and counters'''
+    """unit tests for OperationContext guards and counters"""
 
     def _ctx(self, **kwargs):
         from rest_fetcher.context import OperationContext
+
         return OperationContext(**kwargs)
 
     def test_no_limits_never_raises(self):
@@ -3788,6 +4378,7 @@ class TestOperationContext(unittest.TestCase):
 
     def test_max_requests_returns_stop_signal_before_exceeding(self):
         from rest_fetcher.context import StopSignal
+
         ctx = self._ctx(max_requests=3)
         for _ in range(3):
             self.assertIsNone(ctx.check_max_requests())
@@ -3797,13 +4388,16 @@ class TestOperationContext(unittest.TestCase):
 
     def test_max_pages_returns_stop_signal_before_exceeding(self):
         from rest_fetcher.context import StopSignal
+
         ctx = self._ctx(max_pages=2)
-        ctx.record_page(); ctx.record_page()
+        ctx.record_page()
+        ctx.record_page()
         stop = ctx.check_max_pages()
         self.assertEqual(stop, StopSignal(kind='max_pages', limit=2, observed=2))
 
     def test_deadline_raises_when_expired(self):
         from rest_fetcher import DeadlineExceeded
+
         ctx = self._ctx(time_limit=0.0)
         # time_limit=0 means any elapsed time exceeds it
         with self.assertRaises(DeadlineExceeded) as cm:
@@ -3813,12 +4407,13 @@ class TestOperationContext(unittest.TestCase):
 
     def test_deadline_not_raised_if_within_limit(self):
         ctx = self._ctx(time_limit=9999.0)
-        ctx.check_deadline()   # should not raise
+        ctx.check_deadline()  # should not raise
 
     def test_elapsed_uses_monotonic(self):
         import time
 
         from rest_fetcher.client import _RunState
+
         run_state = _RunState()
         before = time.monotonic()
         time.sleep(0.01)
@@ -3829,10 +4424,10 @@ class TestOperationContext(unittest.TestCase):
 
 
 class TestSafetyCaps(unittest.TestCase):
-    '''integration tests for max_pages, max_requests, time_limit via client API'''
+    """integration tests for max_pages, max_requests, time_limit via client API"""
 
     def _paginated_client(self, num_pages=5):
-        '''client with num_pages pages available, always returns next page until exhausted'''
+        """client with num_pages pages available, always returns next page until exhausted"""
         pages = [{'items': list(range(i * 3, i * 3 + 3))} for i in range(num_pages)]
         call_count = [0]
 
@@ -3844,19 +4439,26 @@ class TestSafetyCaps(unittest.TestCase):
         def mock_fn(req, ctx=None, *, run_state):
             idx = min(call_count[0], num_pages - 1)
             call_count[0] += 1
-            return pages[idx]   # _execute_mock adds headers; callable mock returns just the response dict
+            return pages[
+                idx
+            ]  # _execute_mock adds headers; callable mock returns just the response dict
 
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'endpoints': {'ep': {
-                'method': 'GET', 'path': '/items',
-                'mock': mock_fn,
-                'pagination': {
-                    'next_request': next_req,
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'endpoints': {
+                    'ep': {
+                        'method': 'GET',
+                        'path': '/items',
+                        'mock': mock_fn,
+                        'pagination': {
+                            'next_request': next_req,
+                        },
+                        'on_response': lambda r, s: r.get('items', []),
+                    }
                 },
-                'on_response': lambda r, s: r.get('items', []),
-            }}
-        })
+            }
+        )
         return client, call_count
 
     # max_pages tests
@@ -3873,7 +4475,7 @@ class TestSafetyCaps(unittest.TestCase):
         result = client.fetch('ep', max_pages=3)
         # result is a list of 3 pages (on_response returns per-page list)
         self.assertEqual(len(result), 3)
-        self.assertEqual(sum(len(p) for p in result), 9)   # 3 pages × 3 items
+        self.assertEqual(sum(len(p) for p in result), 9)  # 3 pages × 3 items
 
     def test_max_pages_larger_than_available_does_not_raise(self):
         client, _ = self._paginated_client(num_pages=2)
@@ -3895,14 +4497,15 @@ class TestSafetyCaps(unittest.TestCase):
     # max_requests tests
 
     def test_max_requests_1_returns_stop_signal_on_retryable_second_attempt(self):
-        '''max_requests=1: first attempt succeeds for a normal page,
-        but if the first response is retryable (429), the second attempt is blocked.'''
+        """max_requests=1: first attempt succeeds for a normal page,
+        but if the first response is retryable (429), the second attempt is blocked."""
         from unittest.mock import MagicMock, patch
 
         from rest_fetcher.context import OperationContext, StopSignal
+
         handler = RetryHandler(
             {'max_attempts': 5, 'backoff': 'linear', 'base_delay': 0},
-            {'respect_retry_after': False}
+            {'respect_retry_after': False},
         )
         ctx = OperationContext(max_requests=1)
         r429 = make_response(429)
@@ -3914,7 +4517,7 @@ class TestSafetyCaps(unittest.TestCase):
         self.assertEqual(mock_fn.call_count, 1, 'only one attempt should have been made')
 
     def test_max_requests_via_client_blocks_retries(self):
-        '''max_requests=1: first attempt gets 429, retry would be attempt 2 but is blocked'''
+        """max_requests=1: first attempt gets 429, retry would be attempt 2 but is blocked"""
         attempt_count = [0]
 
         def mock_429_then_ok(*args, **kwargs):
@@ -3924,24 +4527,24 @@ class TestSafetyCaps(unittest.TestCase):
             return make_response(200, {'items': [1]})
 
         with patch('requests.Session.request', side_effect=mock_429_then_ok):
-            client = APIClient({
-                'base_url': 'https://api.example.com',
-                'retry': {'max_attempts': 5, 'backoff': 'linear', 'base_delay': 0.01},
-                'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
-            })
+            client = APIClient(
+                {
+                    'base_url': 'https://api.example.com',
+                    'retry': {'max_attempts': 5, 'backoff': 'linear', 'base_delay': 0.01},
+                    'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
+                }
+            )
             with patch('time.sleep'):
                 result = client.fetch('ep', max_requests=1)
         self.assertEqual(result, [])
         self.assertEqual(attempt_count[0], 1, 'only one attempt before cap fired')
 
     def test_max_requests_3_allows_exactly_3_attempts(self):
-        '''max_requests=3: exactly 3 http attempts allowed across retries'''
+        """max_requests=3: exactly 3 http attempts allowed across retries"""
         from rest_fetcher.context import OperationContext, StopSignal
+
         ctx = OperationContext(max_requests=3)
-        handler = RetryHandler(
-            {'max_attempts': 10, 'backoff': 'linear', 'base_delay': 0},
-            {}
-        )
+        handler = RetryHandler({'max_attempts': 10, 'backoff': 'linear', 'base_delay': 0}, {})
         attempt_count = [0]
 
         def always_429():
@@ -3949,17 +4552,20 @@ class TestSafetyCaps(unittest.TestCase):
             return make_response(429)
 
         from unittest.mock import patch
+
         with patch('time.sleep'):
             stop = handler.execute(always_429, ctx)
 
         self.assertEqual(stop, StopSignal(kind='max_requests', limit=3, observed=3))
-        self.assertEqual(attempt_count[0], 3,
-            'exactly 3 attempts should have been made before max_requests stop')
+        self.assertEqual(
+            attempt_count[0], 3, 'exactly 3 attempts should have been made before max_requests stop'
+        )
 
     # time_limit tests
 
     def test_time_limit_zero_fails_quickly(self):
         from rest_fetcher import DeadlineExceeded
+
         client, _ = self._paginated_client(num_pages=5)
         with self.assertRaises(DeadlineExceeded) as cm:
             client.fetch('ep', time_limit=0.0)
@@ -3968,35 +4574,41 @@ class TestSafetyCaps(unittest.TestCase):
     def test_time_limit_generous_does_not_raise(self):
         client, _ = self._paginated_client(num_pages=2)
         result = client.fetch('ep', time_limit=9999.0)
-        self.assertEqual(len(result), 2)   # 2 pages
+        self.assertEqual(len(result), 2)  # 2 pages
         self.assertEqual(sum(len(p) for p in result), 6)
 
     def test_time_limit_stream_yields_partial_then_raises(self):
         import time as time_mod
 
         from rest_fetcher import DeadlineExceeded
+
         # use a real short sleep to make duration actually expire mid-stream
         sleep_calls = [0]
         original_sleep = time_mod.sleep
 
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'endpoints': {'ep': {
-                'method': 'GET', 'path': '/items',
-                'mock': [
-                    {'items': [1, 2]},
-                    {'items': [3, 4]},
-                    {'items': [5, 6]},
-                ],
-                'pagination': {
-                    'next_request': lambda r, s: (
-                        None if not r.get('items') else {'params': {'page': 2}}
-                    ),
-                    'delay': 0.05,   # each inter-page delay counts toward deadline
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'endpoints': {
+                    'ep': {
+                        'method': 'GET',
+                        'path': '/items',
+                        'mock': [
+                            {'items': [1, 2]},
+                            {'items': [3, 4]},
+                            {'items': [5, 6]},
+                        ],
+                        'pagination': {
+                            'next_request': lambda r, s: (
+                                None if not r.get('items') else {'params': {'page': 2}}
+                            ),
+                            'delay': 0.05,  # each inter-page delay counts toward deadline
+                        },
+                        'on_response': lambda r, s: r.get('items', []),
+                    }
                 },
-                'on_response': lambda r, s: r.get('items', []),
-            }}
-        })
+            }
+        )
         collected = []
         with self.assertRaises(DeadlineExceeded):
             for page in client.stream('ep', time_limit=0.03):
@@ -4009,11 +4621,12 @@ class TestSafetyCaps(unittest.TestCase):
     def test_no_limits_set_completes_normally(self):
         client, _ = self._paginated_client(num_pages=3)
         result = client.fetch('ep')
-        self.assertEqual(len(result), 3)   # 3 pages
-        self.assertEqual(sum(len(p) for p in result), 9)   # 9 total items
+        self.assertEqual(len(result), 3)  # 3 pages
+        self.assertEqual(sum(len(p) for p in result), 9)  # 9 total items
 
     def test_exception_attributes_populated(self):
         from rest_fetcher import DeadlineExceeded
+
         e3 = DeadlineExceeded(limit=30.0, elapsed=30.5)
         self.assertEqual(e3.limit, 30.0)
         self.assertAlmostEqual(e3.elapsed, 30.5)
@@ -4021,34 +4634,38 @@ class TestSafetyCaps(unittest.TestCase):
     # non-paginated endpoint treated as one page
 
     def test_max_pages_zero_returns_empty_on_non_paginated(self):
-        '''max_pages=0 stops before the single non-paginated request and returns an empty result'''
+        """max_pages=0 stops before the single non-paginated request and returns an empty result"""
         call_count = [0]
 
         def mock_fn(req, ctx=None, *, run_state):
             call_count[0] += 1
             return {'data': 1}
 
-        client = APIClient({
-            'base_url': 'https://api.example.com',
-            'endpoints': {'ep': {'method': 'GET', 'path': '/x', 'mock': mock_fn}}
-        })
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com',
+                'endpoints': {'ep': {'method': 'GET', 'path': '/x', 'mock': mock_fn}},
+            }
+        )
         result = client.fetch('ep', max_pages=0)
         self.assertEqual(result, [])
         self.assertEqual(call_count[0], 0, 'no request should have been issued')
 
     def test_max_pages_1_allows_non_paginated(self):
-        '''max_pages=1 allows a single non-paginated request through'''
-        client = APIClient({
-            'base_url': 'https://api.example.com',
-            'endpoints': {'ep': {'method': 'GET', 'path': '/x', 'mock': [{'data': 42}]}}
-        })
+        """max_pages=1 allows a single non-paginated request through"""
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com',
+                'endpoints': {'ep': {'method': 'GET', 'path': '/x', 'mock': [{'data': 42}]}},
+            }
+        )
         result = client.fetch('ep', max_pages=1)
         self.assertEqual(result, {'data': 42})
 
     # oversleep: deadline check fires after retry-related sleeps
 
     def test_deadline_check_fires_after_retry_after_sleep(self):
-        '''DeadlineExceeded fires after Retry-After sleep, not after the next attempt'''
+        """DeadlineExceeded fires after Retry-After sleep, not after the next attempt"""
         from rest_fetcher import DeadlineExceeded
         from rest_fetcher.context import OperationContext
 
@@ -4058,48 +4675,54 @@ class TestSafetyCaps(unittest.TestCase):
         # attempt issued (attempt_count=1), 429 received, sleep called, post-sleep
         # check (elapsed=100 > limit=10) fires DeadlineExceeded.
         slept = {'done': False}
+
         def fake_sleep(t):
             slept['done'] = True
+
         def fake_monotonic():
             return 100.0 if slept['done'] else 0.0
 
         handler = RetryHandler(
             {'max_attempts': 5, 'backoff': 'linear', 'base_delay': 0, 'on_codes': [429]},
-            {'respect_retry_after': True}
+            {'respect_retry_after': True},
         )
 
         attempt_count = [0]
+
         def always_429():
             attempt_count[0] += 1
             return make_response(429, headers={'Retry-After': '60'})
 
         with patch('time.sleep', fake_sleep), patch('time.monotonic', fake_monotonic):
-            ctx = OperationContext(time_limit=10.0)   # started_at=0, limit=10s
+            ctx = OperationContext(time_limit=10.0)  # started_at=0, limit=10s
             with self.assertRaises(DeadlineExceeded):
                 handler.execute(always_429, ctx)
 
-        self.assertEqual(attempt_count[0], 1,
-            'one attempt made; Retry-After sleep triggered; post-sleep check raised')
+        self.assertEqual(
+            attempt_count[0],
+            1,
+            'one attempt made; Retry-After sleep triggered; post-sleep check raised',
+        )
 
     def test_deadline_check_fires_after_network_error_backoff(self):
-        '''DeadlineExceeded fires after network-error backoff sleep'''
+        """DeadlineExceeded fires after network-error backoff sleep"""
         import requests as req_lib
 
         from rest_fetcher import DeadlineExceeded
         from rest_fetcher.context import OperationContext
 
         slept = {'done': False}
+
         def fake_sleep(t):
             slept['done'] = True
+
         def fake_monotonic():
             return 100.0 if slept['done'] else 0.0
 
-        handler = RetryHandler(
-            {'max_attempts': 5, 'backoff': 'linear', 'base_delay': 1},
-            {}
-        )
+        handler = RetryHandler({'max_attempts': 5, 'backoff': 'linear', 'base_delay': 1}, {})
 
         attempt_count = [0]
+
         def always_network_error():
             attempt_count[0] += 1
             raise req_lib.ConnectionError('connection refused')
@@ -4109,9 +4732,11 @@ class TestSafetyCaps(unittest.TestCase):
             with self.assertRaises(DeadlineExceeded):
                 handler.execute(always_network_error, ctx)
 
-        self.assertEqual(attempt_count[0], 1,
-            'one attempt made; backoff sleep triggered; post-sleep check raised')
-
+        self.assertEqual(
+            attempt_count[0],
+            1,
+            'one attempt made; backoff sleep triggered; post-sleep check raised',
+        )
 
 
 class TestCallbackWrapperSemantics(unittest.TestCase):
@@ -4142,7 +4767,6 @@ class TestCallbackWrapperSemantics(unittest.TestCase):
         self.assertEqual(len(pages), 1)
 
 
-
 class TestCallTimeOverrides(unittest.TestCase):
     def test_call_time_response_format_overrides_endpoint_and_client(self):
         schema = {
@@ -4154,7 +4778,7 @@ class TestCallTimeOverrides(unittest.TestCase):
                     'path': '/x',
                     'response_format': 'text',
                 }
-            }
+            },
         }
         resp = make_response(200, {'x': 1}, headers={'Content-Type': 'application/json'})
         with patch('requests.Session.request', return_value=resp):
@@ -4166,10 +4790,16 @@ class TestCallTimeOverrides(unittest.TestCase):
             'base_url': 'https://example.com',
             'csv_delimiter': ';',
             'endpoints': {
-                'ep': {'method': 'GET', 'path': '/r.csv', 'response_format': 'csv', 'csv_delimiter': ','}
-            }
+                'ep': {
+                    'method': 'GET',
+                    'path': '/r.csv',
+                    'response_format': 'csv',
+                    'csv_delimiter': ',',
+                }
+            },
         }
         from unittest.mock import MagicMock
+
         response = MagicMock()
         response.status_code = 200
         response.ok = True
@@ -4186,10 +4816,16 @@ class TestCallTimeOverrides(unittest.TestCase):
             'base_url': 'https://example.com',
             'encoding': 'utf-8',
             'endpoints': {
-                'ep': {'method': 'GET', 'path': '/r.csv', 'response_format': 'csv', 'encoding': 'utf-8'}
-            }
+                'ep': {
+                    'method': 'GET',
+                    'path': '/r.csv',
+                    'response_format': 'csv',
+                    'encoding': 'utf-8',
+                }
+            },
         }
         from unittest.mock import MagicMock
+
         response = MagicMock()
         response.status_code = 200
         response.ok = True
@@ -4207,7 +4843,7 @@ class TestCallTimeOverrides(unittest.TestCase):
             'scrub_headers': ['x-client-secret'],
             'endpoints': {
                 'ep': {'method': 'GET', 'path': '/x', 'scrub_headers': ['x-endpoint-secret']}
-            }
+            },
         }
         client = APIClient(schema)
         job = client._make_job('ep', {'scrub_headers': ['x-call-secret']})
@@ -4219,7 +4855,7 @@ class TestCallTimeOverrides(unittest.TestCase):
             'scrub_query_params': ['client_token'],
             'endpoints': {
                 'ep': {'method': 'GET', 'path': '/x', 'scrub_query_params': ['endpoint_token']}
-            }
+            },
         }
         client = APIClient(schema)
         job = client._make_job('ep', {'scrub_query_params': ['call_token']})
@@ -4257,7 +4893,9 @@ class TestCallTimeOverrides(unittest.TestCase):
             },
         }
         client = APIClient(schema)
-        request = client._make_job('ep', {'headers': {'X-Call': '1', 'X-Shared': 'call'}})._build_initial_request()
+        request = client._make_job(
+            'ep', {'headers': {'X-Call': '1', 'X-Shared': 'call'}}
+        )._build_initial_request()
         self.assertEqual(request['headers']['X-Client'], '1')
         self.assertEqual(request['headers']['X-Endpoint'], '1')
         self.assertEqual(request['headers']['X-Call'], '1')
@@ -4275,7 +4913,9 @@ class TestCallTimeOverrides(unittest.TestCase):
             },
         }
         client = APIClient(schema)
-        request = client._make_job('ep', {'params': {'call_only': '1', 'shared': 'call'}})._build_initial_request()
+        request = client._make_job(
+            'ep', {'params': {'call_only': '1', 'shared': 'call'}}
+        )._build_initial_request()
         self.assertEqual(request['params']['endpoint_only'], '1')
         self.assertEqual(request['params']['call_only'], '1')
         self.assertEqual(request['params']['shared'], 'call')
@@ -4295,7 +4935,6 @@ class TestRunnerGuard(unittest.TestCase):
             self.fail('Use pytest as the test runner: `pytest -q`')
 
 
-
 def test_retry_handler_logs_on_retry_hook_failure(caplog):
     import pytest
     from rest_fetcher.retry import RetryHandler
@@ -4308,7 +4947,9 @@ def test_retry_handler_logs_on_retry_hook_failure(caplog):
         def json(self):
             return {}
 
-    handler = RetryHandler({'max_attempts': 2, 'base_delay': 0, 'max_delay': 0}, {'respect_retry_after': False})
+    handler = RetryHandler(
+        {'max_attempts': 2, 'base_delay': 0, 'max_delay': 0}, {'respect_retry_after': False}
+    )
 
     def request_fn():
         return DummyResponse()
@@ -4334,7 +4975,9 @@ def test_retry_handler_uses_planned_ms_in_on_retry_payload():
         def json(self):
             return {}
 
-    handler = RetryHandler({'max_attempts': 2, 'base_delay': 0, 'max_delay': 0}, {'respect_retry_after': False})
+    handler = RetryHandler(
+        {'max_attempts': 2, 'base_delay': 0, 'max_delay': 0}, {'respect_retry_after': False}
+    )
     seen = []
 
     def request_fn():
@@ -4349,11 +4992,13 @@ def test_retry_handler_uses_planned_ms_in_on_retry_payload():
 
 
 class TestOnPageComplete(unittest.TestCase):
-    '''Tests for Plan G: on_page_complete post-cycle adaptive throttling hook.'''
+    """Tests for Plan G: on_page_complete post-cycle adaptive throttling hook."""
 
     def _paginated_schema(self, pages, on_page_complete=None, on_error=None, delay=None):
         pagination = {
-            **cursor_pagination(cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'),
+            **cursor_pagination(
+                cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'
+            ),
         }
         if delay is not None:
             pagination['delay'] = delay
@@ -4374,31 +5019,38 @@ class TestOnPageComplete(unittest.TestCase):
 
     def test_hook_fires_once_per_page(self):
         calls = []
+
         def hook(outcome, state):
             calls.append(outcome)
             return None
 
-        client = APIClient(self._paginated_schema(
-            pages=[
-                {'items': [1], 'next_cursor': 'n1'},
-                {'items': [2], 'next_cursor': None},
-            ],
-            on_page_complete=hook,
-        ))
+        client = APIClient(
+            self._paginated_schema(
+                pages=[
+                    {'items': [1], 'next_cursor': 'n1'},
+                    {'items': [2], 'next_cursor': None},
+                ],
+                on_page_complete=hook,
+            )
+        )
         client.fetch('ep')
         self.assertEqual(len(calls), 2)
 
     def test_hook_receives_page_cycle_outcome_type(self):
         from rest_fetcher import PageCycleOutcome
+
         received = []
+
         def hook(outcome, state):
             received.append(outcome)
             return None
 
-        client = APIClient(self._paginated_schema(
-            pages=[{'items': [1], 'next_cursor': None}],
-            on_page_complete=hook,
-        ))
+        client = APIClient(
+            self._paginated_schema(
+                pages=[{'items': [1], 'next_cursor': None}],
+                on_page_complete=hook,
+            )
+        )
         client.fetch('ep')
         self.assertEqual(len(received), 1)
         self.assertIsInstance(received[0], PageCycleOutcome)
@@ -4407,27 +5059,33 @@ class TestOnPageComplete(unittest.TestCase):
 
     def test_hook_receives_state_view(self):
         received_states = []
+
         def hook(outcome, state):
             received_states.append(type(state).__name__)
             return None
 
-        client = APIClient(self._paginated_schema(
-            pages=[{'items': [1], 'next_cursor': None}],
-            on_page_complete=hook,
-        ))
+        client = APIClient(
+            self._paginated_schema(
+                pages=[{'items': [1], 'next_cursor': None}],
+                on_page_complete=hook,
+            )
+        )
         client.fetch('ep')
         self.assertEqual(received_states, ['StateView'])
 
     def test_successful_outcome_has_no_error(self):
         received = []
+
         def hook(outcome, state):
             received.append(outcome)
             return None
 
-        client = APIClient(self._paginated_schema(
-            pages=[{'items': [1], 'next_cursor': None}],
-            on_page_complete=hook,
-        ))
+        client = APIClient(
+            self._paginated_schema(
+                pages=[{'items': [1], 'next_cursor': None}],
+                on_page_complete=hook,
+            )
+        )
         client.fetch('ep')
         self.assertIsNone(received[0].error)
         self.assertEqual(received[0].kind, 'success')
@@ -4435,14 +5093,17 @@ class TestOnPageComplete(unittest.TestCase):
 
     def test_attempts_for_page_is_one_on_first_attempt_success(self):
         received = []
+
         def hook(outcome, state):
             received.append(outcome)
             return None
 
-        client = APIClient(self._paginated_schema(
-            pages=[{'items': [1], 'next_cursor': None}],
-            on_page_complete=hook,
-        ))
+        client = APIClient(
+            self._paginated_schema(
+                pages=[{'items': [1], 'next_cursor': None}],
+                on_page_complete=hook,
+            )
+        )
         client.fetch('ep')
         self.assertEqual(received[0].attempts_for_page, 1)
         self.assertEqual(received[0].kind, 'success')
@@ -4455,27 +5116,44 @@ class TestOnPageComplete(unittest.TestCase):
             received.append(outcome)
             return None
 
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'retry': {'max_attempts': 2, 'backoff': 'linear', 'base_delay': 0.02, 'max_delay': 0.02, 'on_codes': [429]},
-            'endpoints': {
-                'ep': {
-                    'path': '/items',
-                    'pagination': {
-                        **cursor_pagination(cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'),
-                    },
-                    'on_page_complete': hook,
-                }
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'retry': {
+                    'max_attempts': 2,
+                    'backoff': 'linear',
+                    'base_delay': 0.02,
+                    'max_delay': 0.02,
+                    'on_codes': [429],
+                },
+                'endpoints': {
+                    'ep': {
+                        'path': '/items',
+                        'pagination': {
+                            **cursor_pagination(
+                                cursor_param='cursor',
+                                next_cursor_path='next_cursor',
+                                data_path='items',
+                            ),
+                        },
+                        'on_page_complete': hook,
+                    }
+                },
             }
-        })
+        )
 
         call_count = [0]
 
         def mock_request(*args, **kwargs):
             call_count[0] += 1
             if call_count[0] == 1:
-                return make_response(status=429, body={}, headers={'Content-Type': 'application/json'})
-            return make_response(body={'items': [1], 'next_cursor': None}, headers={'Content-Type': 'application/json'})
+                return make_response(
+                    status=429, body={}, headers={'Content-Type': 'application/json'}
+                )
+            return make_response(
+                body={'items': [1], 'next_cursor': None},
+                headers={'Content-Type': 'application/json'},
+            )
 
         with patch.object(client._session, 'request', side_effect=mock_request):
             client.fetch('ep')
@@ -4486,17 +5164,20 @@ class TestOnPageComplete(unittest.TestCase):
 
     def test_state_has_progress_fields(self):
         seen_pages = []
+
         def hook(outcome, state):
             seen_pages.append(state.get('pages_so_far'))
             return None
 
-        client = APIClient(self._paginated_schema(
-            pages=[
-                {'items': [1], 'next_cursor': 'n1'},
-                {'items': [2], 'next_cursor': None},
-            ],
-            on_page_complete=hook,
-        ))
+        client = APIClient(
+            self._paginated_schema(
+                pages=[
+                    {'items': [1], 'next_cursor': 'n1'},
+                    {'items': [2], 'next_cursor': None},
+                ],
+                on_page_complete=hook,
+            )
+        )
         client.fetch('ep')
         self.assertEqual(seen_pages, [1, 2])
 
@@ -4504,16 +5185,19 @@ class TestOnPageComplete(unittest.TestCase):
 
     def test_none_return_applies_no_delay(self):
         import time
+
         def hook(outcome, state):
             return None
 
-        client = APIClient(self._paginated_schema(
-            pages=[
-                {'items': [1], 'next_cursor': 'n1'},
-                {'items': [2], 'next_cursor': None},
-            ],
-            on_page_complete=hook,
-        ))
+        client = APIClient(
+            self._paginated_schema(
+                pages=[
+                    {'items': [1], 'next_cursor': 'n1'},
+                    {'items': [2], 'next_cursor': None},
+                ],
+                on_page_complete=hook,
+            )
+        )
         t0 = time.monotonic()
         client.fetch('ep')
         elapsed = time.monotonic() - t0
@@ -4521,13 +5205,16 @@ class TestOnPageComplete(unittest.TestCase):
 
     def test_zero_return_applies_no_delay(self):
         import time
+
         def hook(outcome, state):
             return 0
 
-        client = APIClient(self._paginated_schema(
-            pages=[{'items': [1], 'next_cursor': None}],
-            on_page_complete=hook,
-        ))
+        client = APIClient(
+            self._paginated_schema(
+                pages=[{'items': [1], 'next_cursor': None}],
+                on_page_complete=hook,
+            )
+        )
         t0 = time.monotonic()
         client.fetch('ep')
         elapsed = time.monotonic() - t0
@@ -4539,10 +5226,12 @@ class TestOnPageComplete(unittest.TestCase):
         def hook(outcome, state):
             return -1.0
 
-        client = APIClient(self._paginated_schema(
-            pages=[{'items': [1], 'next_cursor': None}],
-            on_page_complete=hook,
-        ))
+        client = APIClient(
+            self._paginated_schema(
+                pages=[{'items': [1], 'next_cursor': None}],
+                on_page_complete=hook,
+            )
+        )
         with self.assertRaises(CallbackError) as ctx:
             client.fetch('ep')
         self.assertIn('on_page_complete', str(ctx.exception))
@@ -4551,10 +5240,12 @@ class TestOnPageComplete(unittest.TestCase):
         def hook(outcome, state):
             return 'fast'
 
-        client = APIClient(self._paginated_schema(
-            pages=[{'items': [1], 'next_cursor': None}],
-            on_page_complete=hook,
-        ))
+        client = APIClient(
+            self._paginated_schema(
+                pages=[{'items': [1], 'next_cursor': None}],
+                on_page_complete=hook,
+            )
+        )
         with self.assertRaises(CallbackError) as ctx:
             client.fetch('ep')
         self.assertIn('on_page_complete', str(ctx.exception))
@@ -4563,10 +5254,12 @@ class TestOnPageComplete(unittest.TestCase):
         def hook(outcome, state):
             return True
 
-        client = APIClient(self._paginated_schema(
-            pages=[{'items': [1], 'next_cursor': None}],
-            on_page_complete=hook,
-        ))
+        client = APIClient(
+            self._paginated_schema(
+                pages=[{'items': [1], 'next_cursor': None}],
+                on_page_complete=hook,
+            )
+        )
         with self.assertRaises(CallbackError) as ctx:
             client.fetch('ep')
         self.assertIn('on_page_complete', str(ctx.exception))
@@ -4575,10 +5268,12 @@ class TestOnPageComplete(unittest.TestCase):
         def hook(outcome, state):
             return False
 
-        client = APIClient(self._paginated_schema(
-            pages=[{'items': [1], 'next_cursor': None}],
-            on_page_complete=hook,
-        ))
+        client = APIClient(
+            self._paginated_schema(
+                pages=[{'items': [1], 'next_cursor': None}],
+                on_page_complete=hook,
+            )
+        )
         with self.assertRaises(CallbackError) as ctx:
             client.fetch('ep')
         self.assertIn('on_page_complete', str(ctx.exception))
@@ -4589,10 +5284,12 @@ class TestOnPageComplete(unittest.TestCase):
         def hook(outcome, state):
             raise ValueError('hook blew up')
 
-        client = APIClient(self._paginated_schema(
-            pages=[{'items': [1], 'next_cursor': None}],
-            on_page_complete=hook,
-        ))
+        client = APIClient(
+            self._paginated_schema(
+                pages=[{'items': [1], 'next_cursor': None}],
+                on_page_complete=hook,
+            )
+        )
         with self.assertRaises(ValueError) as ctx:
             client.fetch('ep')
         self.assertIn('hook blew up', str(ctx.exception))
@@ -4606,43 +5303,62 @@ class TestOnPageComplete(unittest.TestCase):
             received.append(outcome)
             return None
 
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'endpoints': {
-                'ep': {
-                    'mock': [
-                        {'items': [1], 'next_cursor': 'n1'},
-                        {'items': [2], 'next_cursor': None},
-                    ],
-                    'pagination': {
-                        **cursor_pagination(cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'),
-                    },
-                    'on_page_complete': hook,
-                    'on_error': lambda exc, state: 'skip',
-                }
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'endpoints': {
+                    'ep': {
+                        'mock': [
+                            {'items': [1], 'next_cursor': 'n1'},
+                            {'items': [2], 'next_cursor': None},
+                        ],
+                        'pagination': {
+                            **cursor_pagination(
+                                cursor_param='cursor',
+                                next_cursor_path='next_cursor',
+                                data_path='items',
+                            ),
+                        },
+                        'on_page_complete': hook,
+                        'on_error': lambda exc, state: 'skip',
+                    }
+                },
             }
-        })
+        )
         # drive a 404 response on the second page via mock sequence
         # use mock list with a dict that has no 'items' to simulate error-free skip flow
         # Actually use a real HTTP mock error response path:
         responses = [
-            make_response(body={'items': [1], 'next_cursor': 'n1'}, headers={'Content-Type': 'application/json'}),
-            make_response(status=404, body={'detail': 'not found'}, headers={'Content-Type': 'application/json'}),
+            make_response(
+                body={'items': [1], 'next_cursor': 'n1'},
+                headers={'Content-Type': 'application/json'},
+            ),
+            make_response(
+                status=404,
+                body={'detail': 'not found'},
+                headers={'Content-Type': 'application/json'},
+            ),
         ]
         # need a real session-based client for HTTP mocking
-        client2 = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'endpoints': {
-                'ep': {
-                    'path': '/items',
-                    'pagination': {
-                        **cursor_pagination(cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'),
-                    },
-                    'on_page_complete': hook,
-                    'on_error': lambda exc, state: 'skip',
-                }
+        client2 = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'endpoints': {
+                    'ep': {
+                        'path': '/items',
+                        'pagination': {
+                            **cursor_pagination(
+                                cursor_param='cursor',
+                                next_cursor_path='next_cursor',
+                                data_path='items',
+                            ),
+                        },
+                        'on_page_complete': hook,
+                        'on_error': lambda exc, state: 'skip',
+                    }
+                },
             }
-        })
+        )
         with patch.object(client2._session, 'request', side_effect=responses):
             result = client2.fetch('ep')
 
@@ -4662,19 +5378,25 @@ class TestOnPageComplete(unittest.TestCase):
             received.append(outcome)
             return None
 
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'endpoints': {
-                'ep': {
-                    'path': '/items',
-                    'pagination': {
-                        **cursor_pagination(cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'),
-                    },
-                    'on_page_complete': hook,
-                    'on_error': lambda exc, state: 'raise',
-                }
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'endpoints': {
+                    'ep': {
+                        'path': '/items',
+                        'pagination': {
+                            **cursor_pagination(
+                                cursor_param='cursor',
+                                next_cursor_path='next_cursor',
+                                data_path='items',
+                            ),
+                        },
+                        'on_page_complete': hook,
+                        'on_error': lambda exc, state: 'raise',
+                    }
+                },
             }
-        })
+        )
         # use callable side_effect to avoid StopIteration-inside-generator (PEP 479)
         resp = make_response(status=500, body={}, headers={'Content-Type': 'application/json'})
         with patch.object(client._session, 'request', return_value=resp):
@@ -4690,25 +5412,35 @@ class TestOnPageComplete(unittest.TestCase):
             received.append(outcome)
             return None
 
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'endpoints': {
-                'ep': {
-                    'path': '/items',
-                    'pagination': {
-                        **cursor_pagination(cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'),
-                    },
-                    'on_page_complete': hook,
-                    'on_error': lambda exc, state: 'stop',
-                }
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'endpoints': {
+                    'ep': {
+                        'path': '/items',
+                        'pagination': {
+                            **cursor_pagination(
+                                cursor_param='cursor',
+                                next_cursor_path='next_cursor',
+                                data_path='items',
+                            ),
+                        },
+                        'on_page_complete': hook,
+                        'on_error': lambda exc, state: 'stop',
+                    }
+                },
             }
-        })
+        )
         # use a counter-based callable to avoid PEP 479 StopIteration issues
         call_count = [0]
+
         def mock_request(*args, **kwargs):
             call_count[0] += 1
             if call_count[0] == 1:
-                return make_response(body={'items': [1], 'next_cursor': 'n1'}, headers={'Content-Type': 'application/json'})
+                return make_response(
+                    body={'items': [1], 'next_cursor': 'n1'},
+                    headers={'Content-Type': 'application/json'},
+                )
             return make_response(status=503, body={}, headers={'Content-Type': 'application/json'})
 
         with patch.object(client._session, 'request', side_effect=mock_request):
@@ -4728,25 +5460,32 @@ class TestOnPageComplete(unittest.TestCase):
 
     def test_adaptive_sleep_skipped_when_stop_signal_set(self):
         import time
+
         call_log = []
 
         def hook(outcome, state):
             call_log.append(outcome.stop_signal)
             return 10.0  # would take 10s if sleep ran
 
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'endpoints': {
-                'ep': {
-                    'path': '/items',
-                    'pagination': {
-                        **cursor_pagination(cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'),
-                    },
-                    'on_page_complete': hook,
-                    'on_error': lambda exc, state: 'stop',
-                }
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'endpoints': {
+                    'ep': {
+                        'path': '/items',
+                        'pagination': {
+                            **cursor_pagination(
+                                cursor_param='cursor',
+                                next_cursor_path='next_cursor',
+                                data_path='items',
+                            ),
+                        },
+                        'on_page_complete': hook,
+                        'on_error': lambda exc, state: 'stop',
+                    }
+                },
             }
-        })
+        )
         resp503 = make_response(status=503, body={}, headers={'Content-Type': 'application/json'})
         t0 = time.monotonic()
         with patch.object(client._session, 'request', return_value=resp503):
@@ -4760,28 +5499,35 @@ class TestOnPageComplete(unittest.TestCase):
 
     def test_adaptive_wait_end_event_emitted(self):
         events = []
+
         def on_event(event):
             events.append(event)
 
         def hook(outcome, state):
             return 0.001  # tiny sleep
 
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'endpoints': {
-                'ep': {
-                    'mock': [
-                        {'items': [1], 'next_cursor': 'n1'},
-                        {'items': [2], 'next_cursor': None},
-                    ],
-                    'pagination': {
-                        **cursor_pagination(cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'),
-                    },
-                    'on_page_complete': hook,
-                    'on_event': on_event,
-                }
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'endpoints': {
+                    'ep': {
+                        'mock': [
+                            {'items': [1], 'next_cursor': 'n1'},
+                            {'items': [2], 'next_cursor': None},
+                        ],
+                        'pagination': {
+                            **cursor_pagination(
+                                cursor_param='cursor',
+                                next_cursor_path='next_cursor',
+                                data_path='items',
+                            ),
+                        },
+                        'on_page_complete': hook,
+                        'on_event': on_event,
+                    }
+                },
             }
-        })
+        )
         client.fetch('ep')
         adaptive_events = [e for e in events if e.kind == 'adaptive_wait_end']
         # fires for page 1 (which has a next page); page 2 stop is next_request_none so no sleep
@@ -4791,25 +5537,32 @@ class TestOnPageComplete(unittest.TestCase):
 
     def test_adaptive_wait_end_not_emitted_when_no_delay(self):
         events = []
+
         def on_event(event):
             events.append(event)
 
         def hook(outcome, state):
             return None
 
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'endpoints': {
-                'ep': {
-                    'mock': [{'items': [1], 'next_cursor': None}],
-                    'pagination': {
-                        **cursor_pagination(cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'),
-                    },
-                    'on_page_complete': hook,
-                    'on_event': on_event,
-                }
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'endpoints': {
+                    'ep': {
+                        'mock': [{'items': [1], 'next_cursor': None}],
+                        'pagination': {
+                            **cursor_pagination(
+                                cursor_param='cursor',
+                                next_cursor_path='next_cursor',
+                                data_path='items',
+                            ),
+                        },
+                        'on_page_complete': hook,
+                        'on_event': on_event,
+                    }
+                },
             }
-        })
+        )
         client.fetch('ep')
         adaptive_events = [e for e in events if e.kind == 'adaptive_wait_end']
         self.assertEqual(len(adaptive_events), 0)
@@ -4825,46 +5578,59 @@ class TestOnPageComplete(unittest.TestCase):
         def on_complete(summary, state):
             summaries.append(state)
 
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'endpoints': {
-                'ep': {
-                    'mock': [
-                        {'items': [1], 'next_cursor': 'n1'},
-                        {'items': [2], 'next_cursor': None},
-                    ],
-                    'pagination': {
-                        **cursor_pagination(cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'),
-                    },
-                    'on_page_complete': hook,
-                    'on_complete': on_complete,
-                }
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'endpoints': {
+                    'ep': {
+                        'mock': [
+                            {'items': [1], 'next_cursor': 'n1'},
+                            {'items': [2], 'next_cursor': None},
+                        ],
+                        'pagination': {
+                            **cursor_pagination(
+                                cursor_param='cursor',
+                                next_cursor_path='next_cursor',
+                                data_path='items',
+                            ),
+                        },
+                        'on_page_complete': hook,
+                        'on_complete': on_complete,
+                    }
+                },
             }
-        })
+        )
         list(client.stream('ep'))
         # page 1 fires adaptive sleep (0.001s); page 2 has no next so no sleep
         # counters are exposed via state in on_complete
         # Note: final state is after loop exit so check via event instead
         events = []
+
         def on_event(e):
             events.append(e)
 
-        client2 = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'endpoints': {
-                'ep': {
-                    'mock': [
-                        {'items': [1], 'next_cursor': 'n1'},
-                        {'items': [2], 'next_cursor': None},
-                    ],
-                    'pagination': {
-                        **cursor_pagination(cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'),
-                    },
-                    'on_page_complete': hook,
-                    'on_event': on_event,
-                }
+        client2 = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'endpoints': {
+                    'ep': {
+                        'mock': [
+                            {'items': [1], 'next_cursor': 'n1'},
+                            {'items': [2], 'next_cursor': None},
+                        ],
+                        'pagination': {
+                            **cursor_pagination(
+                                cursor_param='cursor',
+                                next_cursor_path='next_cursor',
+                                data_path='items',
+                            ),
+                        },
+                        'on_page_complete': hook,
+                        'on_event': on_event,
+                    }
+                },
             }
-        })
+        )
         client2.fetch('ep')
         adaptive_end = [e for e in events if e.kind == 'adaptive_wait_end']
         self.assertEqual(len(adaptive_end), 1)
@@ -4880,20 +5646,26 @@ class TestOnPageComplete(unittest.TestCase):
         def hook(outcome, state):
             return 0.001
 
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'endpoints': {
-                'ep': {
-                    'path': '/items',
-                    'pagination': {
-                        **cursor_pagination(cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'),
-                    },
-                    'on_page_complete': hook,
-                    'on_error': lambda exc, state: 'stop',
-                    'on_event': on_event,
-                }
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'endpoints': {
+                    'ep': {
+                        'path': '/items',
+                        'pagination': {
+                            **cursor_pagination(
+                                cursor_param='cursor',
+                                next_cursor_path='next_cursor',
+                                data_path='items',
+                            ),
+                        },
+                        'on_page_complete': hook,
+                        'on_error': lambda exc, state: 'stop',
+                        'on_event': on_event,
+                    }
+                },
             }
-        })
+        )
         resp503 = make_response(status=503, body={}, headers={'Content-Type': 'application/json'})
         with patch.object(client._session, 'request', return_value=resp503):
             client.fetch('ep')
@@ -4913,22 +5685,28 @@ class TestOnPageComplete(unittest.TestCase):
         def hook(outcome, state):
             return 0.001
 
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'endpoints': {
-                'ep': {
-                    'mock': [
-                        {'items': [1], 'next_cursor': 'n1'},
-                        {'items': [2], 'next_cursor': None},
-                    ],
-                    'pagination': {
-                        **cursor_pagination(cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'),
-                    },
-                    'on_page_complete': hook,
-                    'on_event': on_event,
-                }
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'endpoints': {
+                    'ep': {
+                        'mock': [
+                            {'items': [1], 'next_cursor': 'n1'},
+                            {'items': [2], 'next_cursor': None},
+                        ],
+                        'pagination': {
+                            **cursor_pagination(
+                                cursor_param='cursor',
+                                next_cursor_path='next_cursor',
+                                data_path='items',
+                            ),
+                        },
+                        'on_page_complete': hook,
+                        'on_event': on_event,
+                    }
+                },
             }
-        })
+        )
         client.fetch('ep')
 
         request_start = [e for e in events if e.kind == 'request_start']
@@ -4955,34 +5733,47 @@ class TestOnPageComplete(unittest.TestCase):
         def on_event(event):
             events.append(event)
 
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'endpoints': {
-                'ep': {
-                    'path': '/items',
-                    'pagination': {
-                        **cursor_pagination(cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'),
-                    },
-                    'on_page_complete': hook,
-                    'on_event': on_event,
-                }
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'endpoints': {
+                    'ep': {
+                        'path': '/items',
+                        'pagination': {
+                            **cursor_pagination(
+                                cursor_param='cursor',
+                                next_cursor_path='next_cursor',
+                                data_path='items',
+                            ),
+                        },
+                        'on_page_complete': hook,
+                        'on_event': on_event,
+                    }
+                },
             }
-        })
+        )
 
         def fake_monotonic():
             mono_state['value'] += 0.5
             return mono_state['value']
 
-        response = make_response(body={'items': [1], 'next_cursor': None}, headers={'Content-Type': 'application/json'})
+        response = make_response(
+            body={'items': [1], 'next_cursor': None}, headers={'Content-Type': 'application/json'}
+        )
 
-        with patch.object(client._session, 'request', return_value=response),              patch('rest_fetcher.client.time.monotonic', side_effect=fake_monotonic):
+        with (
+            patch.object(client._session, 'request', return_value=response),
+            patch('rest_fetcher.client.time.monotonic', side_effect=fake_monotonic),
+        ):
             client.fetch('ep')
 
         request_end = [e for e in events if e.kind == 'request_end']
         self.assertEqual(len(received), 1)
         self.assertEqual(len(request_end), 1)
         self.assertIsNotNone(received[0].cycle_elapsed_ms)
-        self.assertAlmostEqual(received[0].cycle_elapsed_ms, request_end[0].data['elapsed_ms'], places=6)
+        self.assertAlmostEqual(
+            received[0].cycle_elapsed_ms, request_end[0].data['elapsed_ms'], places=6
+        )
 
     def test_cycle_elapsed_ms_includes_retry_backoff_waits(self):
         received = []
@@ -4998,27 +5789,45 @@ class TestOnPageComplete(unittest.TestCase):
         def on_event(event):
             events.append(event)
 
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'retry': {'max_attempts': 2, 'backoff': 'linear', 'base_delay': BACKOFF_S, 'max_delay': BACKOFF_S, 'on_codes': [429]},
-            'endpoints': {
-                'ep': {
-                    'path': '/items',
-                    'pagination': {
-                        **cursor_pagination(cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'),
-                    },
-                    'on_page_complete': hook,
-                    'on_event': on_event,
-                }
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'retry': {
+                    'max_attempts': 2,
+                    'backoff': 'linear',
+                    'base_delay': BACKOFF_S,
+                    'max_delay': BACKOFF_S,
+                    'on_codes': [429],
+                },
+                'endpoints': {
+                    'ep': {
+                        'path': '/items',
+                        'pagination': {
+                            **cursor_pagination(
+                                cursor_param='cursor',
+                                next_cursor_path='next_cursor',
+                                data_path='items',
+                            ),
+                        },
+                        'on_page_complete': hook,
+                        'on_event': on_event,
+                    }
+                },
             }
-        })
+        )
 
         call_count = [0]
+
         def mock_request(*args, **kwargs):
             call_count[0] += 1
             if call_count[0] == 1:
-                return make_response(status=429, body={}, headers={'Content-Type': 'application/json'})
-            return make_response(body={'items': [1], 'next_cursor': None}, headers={'Content-Type': 'application/json'})
+                return make_response(
+                    status=429, body={}, headers={'Content-Type': 'application/json'}
+                )
+            return make_response(
+                body={'items': [1], 'next_cursor': None},
+                headers={'Content-Type': 'application/json'},
+            )
 
         def fake_sleep(seconds):
             sleep_called['value'] = True
@@ -5030,7 +5839,11 @@ class TestOnPageComplete(unittest.TestCase):
                 sleep_called['value'] = False
             return mono_state['value']
 
-        with patch.object(client._session, 'request', side_effect=mock_request),              patch('rest_fetcher.retry.time.sleep', side_effect=fake_sleep),              patch('rest_fetcher.client.time.monotonic', side_effect=fake_monotonic):
+        with (
+            patch.object(client._session, 'request', side_effect=mock_request),
+            patch('rest_fetcher.retry.time.sleep', side_effect=fake_sleep),
+            patch('rest_fetcher.client.time.monotonic', side_effect=fake_monotonic),
+        ):
             client.fetch('ep')
 
         retry_events = [e for e in events if e.kind == 'retry']
@@ -5047,46 +5860,62 @@ class TestOnPageComplete(unittest.TestCase):
     def test_schema_validates_on_page_complete_as_callable(self):
         # should not raise
         from rest_fetcher.schema import validate
-        validate({
-            'base_url': 'https://api.example.com/v1',
-            'endpoints': {
-                'ep': {
-                    'method': 'GET',
-                    'path': '/items',
-                    'pagination': {
-                        **cursor_pagination(cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'),
-                    },
-                    'on_page_complete': lambda outcome, state: None,
-                }
-            }
-        })
 
-    def test_schema_rejects_non_callable_on_page_complete(self):
-        from rest_fetcher.schema import validate
-        with self.assertRaises(SchemaError):
-            validate({
+        validate(
+            {
                 'base_url': 'https://api.example.com/v1',
                 'endpoints': {
                     'ep': {
                         'method': 'GET',
                         'path': '/items',
-                        'pagination': cursor_pagination(cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'),
-                        'on_page_complete': 'not_a_callable',
+                        'pagination': {
+                            **cursor_pagination(
+                                cursor_param='cursor',
+                                next_cursor_path='next_cursor',
+                                data_path='items',
+                            ),
+                        },
+                        'on_page_complete': lambda outcome, state: None,
                     }
+                },
+            }
+        )
+
+    def test_schema_rejects_non_callable_on_page_complete(self):
+        from rest_fetcher.schema import validate
+
+        with self.assertRaises(SchemaError):
+            validate(
+                {
+                    'base_url': 'https://api.example.com/v1',
+                    'endpoints': {
+                        'ep': {
+                            'method': 'GET',
+                            'path': '/items',
+                            'pagination': cursor_pagination(
+                                cursor_param='cursor',
+                                next_cursor_path='next_cursor',
+                                data_path='items',
+                            ),
+                            'on_page_complete': 'not_a_callable',
+                        }
+                    },
                 }
-            })
+            )
 
     # --- PageCycleOutcome is exported from public surface ---
 
     def test_page_cycle_outcome_importable_from_public_surface(self):
         from rest_fetcher import PageCycleOutcome
+
         self.assertTrue(hasattr(PageCycleOutcome, '__dataclass_fields__'))
 
     # --- static delay + adaptive delay are additive ---
 
     def test_static_and_adaptive_delays_are_additive(self):
-        '''Both delays contribute to total sleep; callers rely on the additive effect, not a specific order.'''
+        """Both delays contribute to total sleep; callers rely on the additive effect, not a specific order."""
         import time
+
         call_order = []
 
         real_sleep = time.sleep
@@ -5099,22 +5928,28 @@ class TestOnPageComplete(unittest.TestCase):
         def hook(outcome, state):
             return 0.07  # adaptive
 
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'endpoints': {
-                'ep': {
-                    'mock': [
-                        {'items': [1], 'next_cursor': 'n1'},
-                        {'items': [2], 'next_cursor': None},
-                    ],
-                    'pagination': {
-                        **cursor_pagination(cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'),
-                        'delay': 0.05,  # static baseline
-                    },
-                    'on_page_complete': hook,
-                }
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'endpoints': {
+                    'ep': {
+                        'mock': [
+                            {'items': [1], 'next_cursor': 'n1'},
+                            {'items': [2], 'next_cursor': None},
+                        ],
+                        'pagination': {
+                            **cursor_pagination(
+                                cursor_param='cursor',
+                                next_cursor_path='next_cursor',
+                                data_path='items',
+                            ),
+                            'delay': 0.05,  # static baseline
+                        },
+                        'on_page_complete': hook,
+                    }
+                },
             }
-        })
+        )
 
         with patch('time.sleep', side_effect=tracking_sleep):
             client.fetch('ep')
@@ -5128,26 +5963,32 @@ class TestOnPageComplete(unittest.TestCase):
     # --- Bug regression: invalid return on error_stop path must raise CallbackError ---
 
     def test_invalid_return_on_error_stop_path_raises_callback_error(self):
-        '''Bug fix: on_page_complete return value must be validated on error_stop path,
-        not silently ignored as it was before the fix.'''
+        """Bug fix: on_page_complete return value must be validated on error_stop path,
+        not silently ignored as it was before the fix."""
         from rest_fetcher.exceptions import CallbackError
 
         def hook(outcome, state):
             return 'bad'  # invalid: not float, None, or 0
 
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'endpoints': {
-                'ep': {
-                    'path': '/items',
-                    'pagination': {
-                        **cursor_pagination(cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'),
-                    },
-                    'on_page_complete': hook,
-                    'on_error': lambda exc, state: 'stop',
-                }
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'endpoints': {
+                    'ep': {
+                        'path': '/items',
+                        'pagination': {
+                            **cursor_pagination(
+                                cursor_param='cursor',
+                                next_cursor_path='next_cursor',
+                                data_path='items',
+                            ),
+                        },
+                        'on_page_complete': hook,
+                        'on_error': lambda exc, state: 'stop',
+                    }
+                },
             }
-        })
+        )
         resp503 = make_response(status=503, body={}, headers={'Content-Type': 'application/json'})
         with patch.object(client._session, 'request', return_value=resp503):
             with self.assertRaises(CallbackError) as ctx:
@@ -5157,32 +5998,42 @@ class TestOnPageComplete(unittest.TestCase):
     # --- Bug regression: status_code preserved on skip and error_stop outcomes ---
 
     def test_status_code_preserved_on_http_error_skip(self):
-        '''Bug fix: _status_code was not injected into headers on skip path,
-        causing outcome.status_code to be None even when response code is known.'''
+        """Bug fix: _status_code was not injected into headers on skip path,
+        causing outcome.status_code to be None even when response code is known."""
         received = []
 
         def hook(outcome, state):
             received.append(outcome)
             return None
 
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'endpoints': {
-                'ep': {
-                    'path': '/items',
-                    'pagination': {
-                        **cursor_pagination(cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'),
-                    },
-                    'on_page_complete': hook,
-                    'on_error': lambda exc, state: 'skip',
-                }
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'endpoints': {
+                    'ep': {
+                        'path': '/items',
+                        'pagination': {
+                            **cursor_pagination(
+                                cursor_param='cursor',
+                                next_cursor_path='next_cursor',
+                                data_path='items',
+                            ),
+                        },
+                        'on_page_complete': hook,
+                        'on_error': lambda exc, state: 'skip',
+                    }
+                },
             }
-        })
+        )
         call_count = [0]
+
         def mock_request(*args, **kwargs):
             call_count[0] += 1
             if call_count[0] == 1:
-                return make_response(body={'items': [1], 'next_cursor': 'n1'}, headers={'Content-Type': 'application/json'})
+                return make_response(
+                    body={'items': [1], 'next_cursor': 'n1'},
+                    headers={'Content-Type': 'application/json'},
+                )
             return make_response(status=404, body={}, headers={'Content-Type': 'application/json'})
 
         with patch.object(client._session, 'request', side_effect=mock_request):
@@ -5196,26 +6047,32 @@ class TestOnPageComplete(unittest.TestCase):
         self.assertEqual(received[1].kind, 'skipped')
 
     def test_status_code_preserved_on_error_stop(self):
-        '''Bug fix: error_stop path hardcoded status_code=None; must use _last_error.status_code.'''
+        """Bug fix: error_stop path hardcoded status_code=None; must use _last_error.status_code."""
         received = []
 
         def hook(outcome, state):
             received.append(outcome)
             return None
 
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'endpoints': {
-                'ep': {
-                    'path': '/items',
-                    'pagination': {
-                        **cursor_pagination(cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'),
-                    },
-                    'on_page_complete': hook,
-                    'on_error': lambda exc, state: 'stop',
-                }
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'endpoints': {
+                    'ep': {
+                        'path': '/items',
+                        'pagination': {
+                            **cursor_pagination(
+                                cursor_param='cursor',
+                                next_cursor_path='next_cursor',
+                                data_path='items',
+                            ),
+                        },
+                        'on_page_complete': hook,
+                        'on_error': lambda exc, state: 'stop',
+                    }
+                },
             }
-        })
+        )
         resp503 = make_response(status=503, body={}, headers={'Content-Type': 'application/json'})
         with patch.object(client._session, 'request', return_value=resp503):
             client.fetch('ep')
@@ -5229,21 +6086,41 @@ class TestOnPageComplete(unittest.TestCase):
 class TestG3StrictValidation(unittest.TestCase):
     def test_strict_rejects_unknown_nested_retry_key(self):
         with self.assertRaises(SchemaError):
-            validate({**simple_schema(), 'retry': {'max_attempts': 2, 'on_errror': [500]}}, strict=True)
+            validate(
+                {**simple_schema(), 'retry': {'max_attempts': 2, 'on_errror': [500]}}, strict=True
+            )
 
     def test_strict_rejects_unknown_nested_pagination_key(self):
-        schema = simple_schema(pagination={'next_request': lambda parsed, state: None, 'delayy': 1.0})
+        schema = simple_schema(
+            pagination={'next_request': lambda parsed, state: None, 'delayy': 1.0}
+        )
         with self.assertRaises(SchemaError):
             validate(schema, strict=True)
 
     def test_strict_rejects_unknown_fixed_auth_key_but_callback_allows_extra(self):
         with self.assertRaises(SchemaError):
-            validate({**simple_schema(), 'auth': {'type': 'bearer', 'token': 'x', 'toke': 'y'}}, strict=True)
-        validate({**simple_schema(), 'auth': {'type': 'callback', 'handler': lambda request_kwargs, config: request_kwargs, 'tenant_id': 'abc'}}, strict=True)
+            validate(
+                {**simple_schema(), 'auth': {'type': 'bearer', 'token': 'x', 'toke': 'y'}},
+                strict=True,
+            )
+        validate(
+            {
+                **simple_schema(),
+                'auth': {
+                    'type': 'callback',
+                    'handler': lambda request_kwargs, config: request_kwargs,
+                    'tenant_id': 'abc',
+                },
+            },
+            strict=True,
+        )
 
     def test_strict_rejects_unknown_nested_rate_limit_key(self):
         with self.assertRaises(SchemaError):
-            validate({**simple_schema(), 'rate_limit': {'min_delay': 0.5, 'minn_delay': 0.5}}, strict=True)
+            validate(
+                {**simple_schema(), 'rate_limit': {'min_delay': 0.5, 'minn_delay': 0.5}},
+                strict=True,
+            )
 
     def test_rate_limit_max_retry_after_is_rejected_with_redirect(self):
         with self.assertRaises(SchemaError):
@@ -5257,25 +6134,31 @@ class TestG3SummaryFields(unittest.TestCase):
         def on_complete(summary, state):
             seen['summary'] = summary
 
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'endpoints': {
-                'ep': {
-                    'method': 'GET',
-                    'path': '/test',
-                    'mock': [
-                        {'items': [1], 'next_cursor': 'n1'},
-                        {'items': [2], 'next_cursor': None},
-                    ],
-                    'pagination': {
-                        **cursor_pagination(cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'),
-                        'delay': 0.2,
-                    },
-                    'on_page_complete': lambda outcome, state: 0.3,
-                    'on_complete': on_complete,
-                }
-            },
-        })
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'endpoints': {
+                    'ep': {
+                        'method': 'GET',
+                        'path': '/test',
+                        'mock': [
+                            {'items': [1], 'next_cursor': 'n1'},
+                            {'items': [2], 'next_cursor': None},
+                        ],
+                        'pagination': {
+                            **cursor_pagination(
+                                cursor_param='cursor',
+                                next_cursor_path='next_cursor',
+                                data_path='items',
+                            ),
+                            'delay': 0.2,
+                        },
+                        'on_page_complete': lambda outcome, state: 0.3,
+                        'on_complete': on_complete,
+                    }
+                },
+            }
+        )
 
         with patch('time.sleep', return_value=None):
             list(client.stream('ep'))
@@ -5318,11 +6201,13 @@ class TestB5MetricsSession(unittest.TestCase):
         self.assertIs(client.metrics, session)
 
     def test_metrics_summary_and_reset(self):
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'metrics': True,
-            'endpoints': {'ep': {'method': 'GET', 'path': '/x', 'mock': [{'items': [1]}]}},
-        })
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'metrics': True,
+                'endpoints': {'ep': {'method': 'GET', 'path': '/x', 'mock': [{'items': [1]}]}},
+            }
+        )
         client.fetch('ep')
         snap = client.metrics.summary()
         self.assertIsInstance(snap, MetricsSummary)
@@ -5340,26 +6225,32 @@ class TestB5MetricsSession(unittest.TestCase):
 
     def test_shared_metrics_session_combines_totals_across_clients(self):
         session = MetricsSession()
-        client_a = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'metrics': session,
-            'endpoints': {'ep': {'method': 'GET', 'path': '/a', 'mock': [{'items': [1]}]}},
-        })
-        client_b = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'metrics': session,
-            'endpoints': {
-                'ep': {
-                    'method': 'GET',
-                    'path': '/b',
-                    'mock': [
-                        {'items': [1], 'next_cursor': 'n1'},
-                        {'items': [2], 'next_cursor': None},
-                    ],
-                    'pagination': cursor_pagination(cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'),
-                }
-            },
-        })
+        client_a = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'metrics': session,
+                'endpoints': {'ep': {'method': 'GET', 'path': '/a', 'mock': [{'items': [1]}]}},
+            }
+        )
+        client_b = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'metrics': session,
+                'endpoints': {
+                    'ep': {
+                        'method': 'GET',
+                        'path': '/b',
+                        'mock': [
+                            {'items': [1], 'next_cursor': 'n1'},
+                            {'items': [2], 'next_cursor': None},
+                        ],
+                        'pagination': cursor_pagination(
+                            cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'
+                        ),
+                    }
+                },
+            }
+        )
         client_a.fetch('ep')
         client_b.fetch('ep')
         snap = session.summary()
@@ -5368,18 +6259,20 @@ class TestB5MetricsSession(unittest.TestCase):
         self.assertEqual(snap.total_pages, 3)
 
     def test_failed_run_is_recorded_when_on_complete_raises(self):
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'metrics': True,
-            'endpoints': {
-                'ep': {
-                    'method': 'GET',
-                    'path': '/x',
-                    'mock': [{'items': [1]}],
-                    'on_complete': lambda summary, state: raise_(RuntimeError('boom')),
-                }
-            },
-        })
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'metrics': True,
+                'endpoints': {
+                    'ep': {
+                        'method': 'GET',
+                        'path': '/x',
+                        'mock': [{'items': [1]}],
+                        'on_complete': lambda summary, state: raise_(RuntimeError('boom')),
+                    }
+                },
+            }
+        )
         with self.assertRaises(CallbackError):
             list(client.stream('ep'))
         snap = client.metrics.summary()
@@ -5388,38 +6281,40 @@ class TestB5MetricsSession(unittest.TestCase):
         self.assertEqual(snap.total_requests, 1)
         self.assertEqual(snap.total_pages, 1)
 
-
     def test_metrics_record_failure_does_not_mask_run_exception(self):
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'metrics': True,
-            'endpoints': {
-                'ep': {
-                    'method': 'GET',
-                    'path': '/x',
-                    'mock': [{'items': [1]}],
-                    'on_complete': lambda summary, state: raise_(RuntimeError('boom')),
-                }
-            },
-        })
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'metrics': True,
+                'endpoints': {
+                    'ep': {
+                        'method': 'GET',
+                        'path': '/x',
+                        'mock': [{'items': [1]}],
+                        'on_complete': lambda summary, state: raise_(RuntimeError('boom')),
+                    }
+                },
+            }
+        )
         client.metrics._record = MagicMock(side_effect=RuntimeError('metrics-bad'))
         with self.assertRaises(CallbackError) as ctx:
             list(client.stream('ep'))
         self.assertIn('boom', str(ctx.exception))
 
-
     def test_single_success_run_matches_metrics_summary(self):
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'metrics': True,
-            'endpoints': {
-                'ep': {
-                    'method': 'GET',
-                    'path': '/x',
-                    'mock': [{'items': [1]}, {'items': [2]}],
-                }
-            },
-        })
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'metrics': True,
+                'endpoints': {
+                    'ep': {
+                        'method': 'GET',
+                        'path': '/x',
+                        'mock': [{'items': [1]}, {'items': [2]}],
+                    }
+                },
+            }
+        )
         run = client.stream_run('ep')
         list(run)
         summary = run.summary
@@ -5438,18 +6333,20 @@ class TestB5MetricsSession(unittest.TestCase):
         self.assertEqual(metrics.total_failed_runs, 0)
 
     def test_single_failed_run_is_counted_in_metrics_summary(self):
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'metrics': True,
-            'endpoints': {
-                'ep': {
-                    'method': 'GET',
-                    'path': '/x',
-                    'mock': [{'items': [1]}],
-                    'on_complete': lambda summary, state: raise_(RuntimeError('boom')),
-                }
-            },
-        })
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'metrics': True,
+                'endpoints': {
+                    'ep': {
+                        'method': 'GET',
+                        'path': '/x',
+                        'mock': [{'items': [1]}],
+                        'on_complete': lambda summary, state: raise_(RuntimeError('boom')),
+                    }
+                },
+            }
+        )
         with self.assertRaises(CallbackError):
             list(client.stream('ep'))
         metrics = client.metrics.summary()
@@ -5465,19 +6362,26 @@ class TestB5MetricsSession(unittest.TestCase):
     def test_playback_save_failure_marks_run_failed(self):
         with tempfile.TemporaryDirectory() as td:
             path = os.path.join(td, 'fixture.jsonl')
-            client = APIClient({
-                'base_url': 'https://api.example.com/v1',
-                'metrics': True,
-                'endpoints': {
-                    'ep': {
-                        'method': 'GET',
-                        'path': '/x',
-                        'playback': {'path': path, 'mode': 'save'},
-                    }
-                },
-            })
-            with patch.object(requests.Session, 'request', return_value=make_response(body={'items': [1]})):
-                with patch('rest_fetcher.playback.PlaybackHandler.save', side_effect=RuntimeError('save-bad')):
+            client = APIClient(
+                {
+                    'base_url': 'https://api.example.com/v1',
+                    'metrics': True,
+                    'endpoints': {
+                        'ep': {
+                            'method': 'GET',
+                            'path': '/x',
+                            'playback': {'path': path, 'mode': 'save'},
+                        }
+                    },
+                }
+            )
+            with patch.object(
+                requests.Session, 'request', return_value=make_response(body={'items': [1]})
+            ):
+                with patch(
+                    'rest_fetcher.playback.PlaybackHandler.save',
+                    side_effect=RuntimeError('save-bad'),
+                ):
                     with self.assertRaises(RuntimeError) as ctx:
                         client.fetch('ep')
             self.assertIn('save-bad', str(ctx.exception))
@@ -5488,21 +6392,25 @@ class TestB5MetricsSession(unittest.TestCase):
             self.assertEqual(snap.total_pages, 1)
 
     def test_abandoned_generator_counts_as_failed_run(self):
-        client = APIClient({
-            'base_url': 'https://api.example.com/v1',
-            'metrics': True,
-            'endpoints': {
-                'ep': {
-                    'method': 'GET',
-                    'path': '/x',
-                    'mock': [
-                        {'items': [1], 'next_cursor': 'n1'},
-                        {'items': [2], 'next_cursor': None},
-                    ],
-                    'pagination': cursor_pagination(cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'),
-                }
-            },
-        })
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'metrics': True,
+                'endpoints': {
+                    'ep': {
+                        'method': 'GET',
+                        'path': '/x',
+                        'mock': [
+                            {'items': [1], 'next_cursor': 'n1'},
+                            {'items': [2], 'next_cursor': None},
+                        ],
+                        'pagination': cursor_pagination(
+                            cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'
+                        ),
+                    }
+                },
+            }
+        )
         it = client.stream('ep')
         next(it)
         it.close()
@@ -5513,10 +6421,15 @@ class TestB5MetricsSession(unittest.TestCase):
         self.assertEqual(snap.total_pages, 0)
 
 
-
 class TestOptionalTypingSurface(unittest.TestCase):
     def test_schema_typeddicts_track_runtime_config_keys(self):
-        from rest_fetcher.types import CallParams, ClientSchema, EndpointSchema, RateLimitConfig, RetryConfig
+        from rest_fetcher.types import (
+            CallParams,
+            ClientSchema,
+            EndpointSchema,
+            RateLimitConfig,
+            RetryConfig,
+        )
 
         self.assertIn('response_format', CallParams.__annotations__)
         self.assertIn('csv_delimiter', CallParams.__annotations__)
@@ -5540,6 +6453,7 @@ class TestOptionalTypingSurface(unittest.TestCase):
 class TestErrorRaiseSemantics(unittest.TestCase):
     def _job(self) -> object:
         from rest_fetcher.client import _FetchJob
+
         client = APIClient(simple_schema())
         return _FetchJob(
             client._schema,
@@ -5564,6 +6478,7 @@ class TestErrorRaiseSemantics(unittest.TestCase):
 
     def test_handle_request_cycle_error_raise_preserves_original_traceback_site(self):
         from rest_fetcher.client import _RunState
+
         job = self._job()
         run_state = _RunState(endpoint_name='test', event_source='live')
 

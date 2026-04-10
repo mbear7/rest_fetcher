@@ -35,34 +35,38 @@ def main() -> None:
     def on_event(ev) -> None:
         events.append((ev.kind, ev.source, ev.data))
 
-    client = APIClient({
-        'base_url': 'https://example.invalid',
-        'on_event': on_event,
-        'rate_limit': {
-            'strategy': 'token_bucket',
-            'requests_per_second': 1.0,  # sustained refill rate
-            'burst': 1,                 # bucket capacity / max immediate spike
-            'on_limit': 'wait',
-            'clock': clock,
-            'sleep': sleep,
-        },
-        'endpoints': {
-            't': {
-                'method': 'GET',
-                'path': '/t',
-                'response_format': 'json',
-                # Mock is treated as a live run (events use source='live'), but it avoids real HTTP.
-                'mock': [
-                    {'status_code': 200, 'body': {'items': [1]}},
-                    {'status_code': 200, 'body': {'items': [2]}},
-                ],
-                'pagination': {
-                    'next_request': lambda parsed_body, state: None if state.get('n', 0) >= 2 else {'url': 'https://example.invalid/t?page=2'},
-                },
-                'update_state': lambda page_payload, state: {'n': state.get('n', 0) + 1},
-            }
-        },
-    })
+    client = APIClient(
+        {
+            'base_url': 'https://example.invalid',
+            'on_event': on_event,
+            'rate_limit': {
+                'strategy': 'token_bucket',
+                'requests_per_second': 1.0,  # sustained refill rate
+                'burst': 1,  # bucket capacity / max immediate spike
+                'on_limit': 'wait',
+                'clock': clock,
+                'sleep': sleep,
+            },
+            'endpoints': {
+                't': {
+                    'method': 'GET',
+                    'path': '/t',
+                    'response_format': 'json',
+                    # Mock is treated as a live run (events use source='live'), but it avoids real HTTP.
+                    'mock': [
+                        {'status_code': 200, 'body': {'items': [1]}},
+                        {'status_code': 200, 'body': {'items': [2]}},
+                    ],
+                    'pagination': {
+                        'next_request': lambda parsed_body, state: None
+                        if state.get('n', 0) >= 2
+                        else {'url': 'https://example.invalid/t?page=2'},
+                    },
+                    'update_state': lambda page_payload, state: {'n': state.get('n', 0) + 1},
+                }
+            },
+        }
+    )
 
     pages = client.fetch('t')
     print('pages:', pages)

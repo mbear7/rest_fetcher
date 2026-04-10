@@ -8,19 +8,21 @@ EventSource = Literal['live', 'playback']
 
 # internal registry of all event kinds emitted by the library.
 # used for on_event_kinds validation — not exported.
-_KNOWN_EVENT_KINDS: frozenset[str] = frozenset({
-    'adaptive_wait_end',
-    'callback_error',
-    'error',
-    'page_parsed',
-    'rate_limit_exceeded',
-    'rate_limit_wait_end',
-    'rate_limit_wait_start',
-    'request_end',
-    'request_start',
-    'retry',
-    'stopped',
-})
+_KNOWN_EVENT_KINDS: frozenset[str] = frozenset(
+    {
+        'adaptive_wait_end',
+        'callback_error',
+        'error',
+        'page_parsed',
+        'rate_limit_exceeded',
+        'rate_limit_wait_end',
+        'rate_limit_wait_start',
+        'request_end',
+        'request_start',
+        'retry',
+        'stopped',
+    }
+)
 
 
 def _safe_time() -> float:

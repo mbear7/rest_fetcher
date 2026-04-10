@@ -1,4 +1,4 @@
-'''
+"""
 Generic example: non-JSON pagination with `canonical_parser` + playback.
 
 This is intentionally small and neutral (Atom/XML-ish), so you can see the pattern
@@ -6,7 +6,7 @@ without any domain-specific baggage.
 
 Run from the repo root:
     python examples/atom_example.py
-'''
+"""
 
 from __future__ import annotations
 
@@ -66,6 +66,7 @@ def update_state(page_payload: ET.Element, state: dict[str, Any]) -> dict[str, A
         return {'queue_i': qi + 1}
     return None
 
+
 def next_request(parsed_body: ET.Element, state: dict[str, Any]) -> dict[str, Any] | None:
     # Navigation is state-driven after discovery. `parsed_body` is available but
     # not required here. Not every callback must use every argument.
@@ -74,6 +75,7 @@ def next_request(parsed_body: ET.Element, state: dict[str, Any]) -> dict[str, An
     if qi >= len(queue):
         return None
     return {'url': queue[qi]}
+
 
 def main() -> None:
     fixture_path = ROOT / 'examples' / 'fixtures' / 'atom_directory_example.json'
@@ -92,23 +94,25 @@ def main() -> None:
             url = (link_el.attrib.get('href') if link_el is not None else '').strip()
             entries.append(Entry(entry_id, title, updated, url))
 
-    client = APIClient({
-        'base_url': 'https://example.test',
-        'endpoints': {
-            'atom': {
-                'method': 'GET',
-                'path': '/atom/directory',
-                'response_format': 'xml',
-                'pagination': {
-                    'next_request': next_request,
-                },
-                'update_state': update_state,
-                'canonical_parser': canonical_parser,
-                'on_page': on_page,
-                'playback': {'mode': 'load', 'path': str(fixture_path)},
-            }
+    client = APIClient(
+        {
+            'base_url': 'https://example.test',
+            'endpoints': {
+                'atom': {
+                    'method': 'GET',
+                    'path': '/atom/directory',
+                    'response_format': 'xml',
+                    'pagination': {
+                        'next_request': next_request,
+                    },
+                    'update_state': update_state,
+                    'canonical_parser': canonical_parser,
+                    'on_page': on_page,
+                    'playback': {'mode': 'load', 'path': str(fixture_path)},
+                }
+            },
         }
-    })
+    )
 
     run = client.stream_run('atom')
     for _ in run:
@@ -119,6 +123,7 @@ def main() -> None:
 
     print('Entries:', len(entries))
     print('Summary:', run.summary)
+
 
 if __name__ == '__main__':
     main()

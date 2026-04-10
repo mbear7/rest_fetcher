@@ -1,13 +1,12 @@
-'''
+"""
 
 live test script for date.nager.at public holidays api.
 no auth required, no rate limits.
 run from the directory containing rest_fetcher/:
     python nager_example.py
-'''
+"""
 
 if __name__ == '__main__':
-
     import json
 
     from rest_fetcher import APIClient
@@ -16,37 +15,38 @@ if __name__ == '__main__':
         print(f'\n--- {label} ---')
         print(json.dumps(data, indent=2, default=str))
 
-
-    client = APIClient({
-        'base_url': 'https://date.nager.at/api/v3',
-        'timeout': 15,
-        'log_level': 'medium',
-        'endpoints': {
-            # path_params interpolated at call time
-            'holidays': {
-                'method': 'GET',
-                'path': '/PublicHolidays/{year}/{country}',
-            },
-            # today check — returns 200 (is holiday) or 204 (not a holiday), no body
-            'is_today_holiday': {
-                'method': 'GET',
-                'path': '/IsTodayPublicHoliday/{country}',
-                'on_response': lambda resp, state: {
-                    'is_holiday': state['_response_headers'].get('_status_code') == 200
+    client = APIClient(
+        {
+            'base_url': 'https://date.nager.at/api/v3',
+            'timeout': 15,
+            'log_level': 'medium',
+            'endpoints': {
+                # path_params interpolated at call time
+                'holidays': {
+                    'method': 'GET',
+                    'path': '/PublicHolidays/{year}/{country}',
+                },
+                # today check — returns 200 (is holiday) or 204 (not a holiday), no body
+                'is_today_holiday': {
+                    'method': 'GET',
+                    'path': '/IsTodayPublicHoliday/{country}',
+                    'on_response': lambda resp, state: {
+                        'is_holiday': state['_response_headers'].get('_status_code') == 200
+                    },
+                },
+                # upcoming holidays for a country
+                'next_holidays': {
+                    'method': 'GET',
+                    'path': '/NextPublicHolidays/{country}',
+                },
+                # full list of supported countries — no path params needed
+                'countries': {
+                    'method': 'GET',
+                    'path': '/AvailableCountries',
                 },
             },
-            # upcoming holidays for a country
-            'next_holidays': {
-                'method': 'GET',
-                'path': '/NextPublicHolidays/{country}',
-            },
-            # full list of supported countries — no path params needed
-            'countries': {
-                'method': 'GET',
-                'path': '/AvailableCountries',
-            },
         }
-    })
+    )
 
     print('\n' + '=' * 50)
     print('  date.nager.at — public holidays api test')

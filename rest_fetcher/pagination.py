@@ -31,10 +31,17 @@ class _RunStateLike(Protocol):
     def reset_page_cycle(self) -> None: ...
     def mark_page_complete(self) -> None: ...
     def mark_wait(self, kind: str, seconds: float, *, cause: str | None = None) -> None: ...
-    def build_page_cycle_outcome(self, *, status_code: int | None, error: Exception | None, stop_signal: StopSignal | None) -> PageCycleOutcome: ...
-    def page_parsed_event_data(self, *, status_code: int | None = None, now: float | None = None) -> dict[str, Any]: ...
+    def build_page_cycle_outcome(
+        self, *, status_code: int | None, error: Exception | None, stop_signal: StopSignal | None
+    ) -> PageCycleOutcome: ...
+    def page_parsed_event_data(
+        self, *, status_code: int | None = None, now: float | None = None
+    ) -> dict[str, Any]: ...
     def stop_event_data(self, stop: StopSignal) -> dict[str, Any]: ...
-    def wait_event_data(self, kind: str, *, wait_ms: float, extra: dict[str, Any] | None = None) -> dict[str, Any]: ...
+    def wait_event_data(
+        self, kind: str, *, wait_ms: float, extra: dict[str, Any] | None = None
+    ) -> dict[str, Any]: ...
+
 
 import numbers as _numbers
 
@@ -46,16 +53,17 @@ def _validate_params_mode(params_mode: str) -> str:
 
 
 def _validate_adaptive_delay(value: Any) -> float | None:
-    '''Validates the return value of on_page_complete.
+    """Validates the return value of on_page_complete.
 
     Returns the delay as a float, or None if no delay should be applied.
     Raises CallbackError for invalid return values.
-    '''
+    """
     if value is None:
         return None
     # bool is a subclass of int — reject it explicitly to prevent True -> 1.0 footgun
     if isinstance(value, bool):
         from .exceptions import CallbackError
+
         raise CallbackError(
             f'on_page_complete returned bool ({value!r}) — return a float in seconds, None, or 0 for no delay',
             callback_name='on_page_complete',
@@ -65,6 +73,7 @@ def _validate_adaptive_delay(value: Any) -> float | None:
         return None
     if not isinstance(value, _numbers.Real):
         from .exceptions import CallbackError
+
         raise CallbackError(
             f'on_page_complete must return a float (seconds), None, or 0 — got {type(value).__name__!r}',
             callback_name='on_page_complete',
@@ -73,12 +82,14 @@ def _validate_adaptive_delay(value: Any) -> float | None:
     delay = float(value)
     if delay < 0:
         from .exceptions import CallbackError
+
         raise CallbackError(
             f'on_page_complete returned negative delay ({delay}) — delay must be >= 0',
             callback_name='on_page_complete',
             cause=None,
         )
     return delay if delay > 0 else None
+
 
 PathPart = str | int
 PathLike = str | Iterable[PathPart] | PathPart | None
@@ -94,13 +105,13 @@ def _event_source(run_state: _RunStateLike | None) -> EventSource:
     return source
 
 
-#class FetchFn(Protocol):
+# class FetchFn(Protocol):
 #    def __call__(self, request: dict[str, Any], ctx: Any = None, *, run_state: Any = None) -> Any:
 #        ...
 
 
 def _copy_request_for_snapshot(request: dict[str, Any]) -> dict[str, Any]:
-    '''
+    """
     makes a targeted shallow copy of a request dict for use in state['_request'].
 
     copies the top-level dict plus params, headers, json, and data one level deep.
@@ -117,7 +128,7 @@ def _copy_request_for_snapshot(request: dict[str, Any]) -> dict[str, Any]:
 
     what is not protected (not a real-world mutation pattern):
         state['_request']['headers']['x'].mutate()  -- value-object mutation; not guarded
-    '''
+    """
     snapshot = {**request}
     for key in ('params', 'headers', 'json', 'data'):
         val = snapshot.get(key)
@@ -127,7 +138,7 @@ def _copy_request_for_snapshot(request: dict[str, Any]) -> dict[str, Any]:
 
 
 class StateView(dict[str, Any]):
-    '''
+    """
     read-only snapshot of run-local page_state passed to pagination callbacks.
 
     raises StateViewMutationError immediately if a callback attempts to write to it directly.
@@ -144,7 +155,7 @@ class StateView(dict[str, Any]):
     headers, json, and data, which blocks the common request-mutation footguns
     (state['_request']['params']['page'] = 999) but is not a deep-immutable structure:
     value-object mutations (state['_request']['headers']['x'].mutate()) are not guarded.
-    '''
+    """
 
     def _raise_mutation(self, key):
         raise StateViewMutationError(key)
@@ -194,6 +205,7 @@ def _normalize_path(path: PathLike) -> tuple[PathPart, ...] | None:
         path = path.decode('utf-8', errors='replace')
     if isinstance(path, str):
         return tuple(part for part in path.split('.') if part)
+
     def _coerce_part(part: Any) -> PathPart:
         if isinstance(part, bytes):
             return part.decode('utf-8', errors='replace')
@@ -236,8 +248,9 @@ def _resolve_path(resp: Any, path: PathLike, default: Any = None) -> Any:
             return default
     return value
 
+
 def _safe_int(value, fallback, context=''):
-    '''
+    """
     converts value to int, returning fallback on failure.
     logs a warning for non-numeric values. callers decide whether to
     stop pagination or fall back to heuristics.
@@ -247,36 +260,33 @@ def _safe_int(value, fallback, context=''):
         _safe_int('unknown', 0)      -> 0  (+ warning)
         _safe_int('25 items', 0)     -> 0  (+ warning)
         _safe_int(None, 0)           -> 0
-    '''
+    """
     if value is None:
         return fallback
     try:
         return int(value)
     except (ValueError, TypeError):
         logger.debug(
-            'pagination: could not parse %r as int%s',
-            value, f' ({context})' if context else ''
+            'pagination: could not parse %r as int%s', value, f' ({context})' if context else ''
         )
         return fallback
 
 
 def _safe_items(value, data_key=''):
-    '''
+    """
     ensures the items value is a list.
     returns [] with a warning if value is None, a dict, or any non-list type.
     protects len() and iteration from crashing on unexpected response shapes.
-    '''
+    """
     if isinstance(value, list):
         return value
     if value is None:
-        logger.debug(
-            'pagination: data_key %r resolved to None — treating as empty page',
-            data_key
-        )
+        logger.debug('pagination: data_key %r resolved to None — treating as empty page', data_key)
     else:
         logger.debug(
             'pagination: data_key %r resolved to %s, expected list — treating as empty page',
-            data_key, type(value).__name__
+            data_key,
+            type(value).__name__,
         )
     return []
 
@@ -290,7 +300,6 @@ def offset_pagination(
     path_resolver: PathResolver | None = None,
     params_mode: str = 'merge',
 ) -> PaginationConfig:
-
     params_mode = _validate_params_mode(params_mode)
 
     def next_request(parsed_body: Any, state: Any) -> dict[str, Any] | None:
@@ -300,14 +309,18 @@ def offset_pagination(
             return None
         req_params = (state.get('_request') or {}).get('params') or {}
         current_offset = _safe_int(
-            req_params.get(offset_param) if req_params.get(offset_param) is not None
+            req_params.get(offset_param)
+            if req_params.get(offset_param) is not None
             else state.get('offset', 0),
-            0, 'offset'
+            0,
+            'offset',
         )
         effective_limit = _safe_int(
-            req_params.get(limit_param) if req_params.get(limit_param) is not None
+            req_params.get(limit_param)
+            if req_params.get(limit_param) is not None
             else state.get(limit_param, limit),
-            limit, limit_param
+            limit,
+            limit_param,
         )
         next_offset = current_offset + len(items)
 
@@ -315,14 +328,18 @@ def offset_pagination(
             raw_total = resolver(parsed_body, total_path)
             total = _safe_int(raw_total, None, total_path)
             if total is None:
-                logger.warning('offset_pagination: invalid total at %r: %r; stopping', total_path, raw_total)
+                logger.warning(
+                    'offset_pagination: invalid total at %r: %r; stopping', total_path, raw_total
+                )
                 return None
             if next_offset >= total:
                 return None
         else:
             if len(items) < effective_limit:
                 return None
-        result: dict[str, Any] = {'params': {offset_param: next_offset, limit_param: effective_limit}}
+        result: dict[str, Any] = {
+            'params': {offset_param: next_offset, limit_param: effective_limit}
+        }
         if params_mode != 'merge':
             result['params_mode'] = params_mode
         return result
@@ -331,12 +348,15 @@ def offset_pagination(
         resolver = path_resolver or _resolve_path
         return _safe_items(resolver(resp, data_path), data_path)
 
-    return cast('PaginationConfig', {
-        '_rf_pagination_helper': True,
-        'next_request': next_request,
-        'on_response': on_response,
-        'initial_params': {offset_param: 0, limit_param: limit}
-    })
+    return cast(
+        'PaginationConfig',
+        {
+            '_rf_pagination_helper': True,
+            'next_request': next_request,
+            'on_response': on_response,
+            'initial_params': {offset_param: 0, limit_param: limit},
+        },
+    )
 
 
 def cursor_pagination(
@@ -346,7 +366,6 @@ def cursor_pagination(
     path_resolver: PathResolver | None = None,
     params_mode: str = 'merge',
 ) -> PaginationConfig:
-
     params_mode = _validate_params_mode(params_mode)
     if cursor_param is None:
         raise TypeError('cursor_pagination() missing required argument: cursor_param')
@@ -367,11 +386,14 @@ def cursor_pagination(
         resolver = path_resolver or _resolve_path
         return _safe_items(resolver(resp, data_path), data_path)
 
-    return cast('PaginationConfig', {
-        '_rf_pagination_helper': True,
-        'next_request': next_request,
-        'on_response': on_response,
-    })
+    return cast(
+        'PaginationConfig',
+        {
+            '_rf_pagination_helper': True,
+            'next_request': next_request,
+            'on_response': on_response,
+        },
+    )
 
 
 def page_number_pagination(
@@ -383,7 +405,6 @@ def page_number_pagination(
     path_resolver: PathResolver | None = None,
     params_mode: str = 'merge',
 ) -> PaginationConfig:
-
     params_mode = _validate_params_mode(params_mode)
 
     def next_request(parsed_body: Any, state: Any) -> dict[str, Any] | None:
@@ -393,14 +414,18 @@ def page_number_pagination(
             return None
         req_params = (state.get('_request') or {}).get('params') or {}
         current_page = _safe_int(
-            req_params.get(page_param) if req_params.get(page_param) is not None
+            req_params.get(page_param)
+            if req_params.get(page_param) is not None
             else state.get('page', 1),
-            1, 'page'
+            1,
+            'page',
         )
         effective_page_size = _safe_int(
-            req_params.get(page_size_param) if req_params.get(page_size_param) is not None
+            req_params.get(page_size_param)
+            if req_params.get(page_size_param) is not None
             else state.get(page_size_param, page_size),
-            page_size, page_size_param
+            page_size,
+            page_size_param,
         )
         next_page = current_page + 1
 
@@ -408,14 +433,20 @@ def page_number_pagination(
             raw_total = resolver(parsed_body, total_pages_path)
             total_pages = _safe_int(raw_total, None, total_pages_path)
             if total_pages is None:
-                logger.warning('page_number_pagination: invalid total_pages at %r: %r; stopping', total_pages_path, raw_total)
+                logger.warning(
+                    'page_number_pagination: invalid total_pages at %r: %r; stopping',
+                    total_pages_path,
+                    raw_total,
+                )
                 return None
             if current_page >= total_pages:
                 return None
         else:
             if len(items) < effective_page_size:
                 return None
-        result: dict[str, Any] = {'params': {page_param: next_page, page_size_param: effective_page_size}}
+        result: dict[str, Any] = {
+            'params': {page_param: next_page, page_size_param: effective_page_size}
+        }
         if params_mode != 'merge':
             result['params_mode'] = params_mode
         return result
@@ -424,15 +455,19 @@ def page_number_pagination(
         resolver = path_resolver or _resolve_path
         return _safe_items(resolver(resp, data_path), data_path)
 
-    return cast('PaginationConfig', {
-        '_rf_pagination_helper': True,
-        'next_request': next_request,
-        'on_response': on_response,
-        'initial_params': {page_param: 1, page_size_param: page_size}
-    })
+    return cast(
+        'PaginationConfig',
+        {
+            '_rf_pagination_helper': True,
+            'next_request': next_request,
+            'on_response': on_response,
+            'initial_params': {page_param: 1, page_size_param: page_size},
+        },
+    )
+
 
 def link_header_pagination(data_path: PathLike = 'items') -> PaginationConfig:
-    '''
+    """
     pagination via RFC 5988 Link header.
     looks for rel="next" in the Link header and uses that url directly.
     header lookup is case-insensitive.
@@ -442,7 +477,8 @@ def link_header_pagination(data_path: PathLike = 'items') -> PaginationConfig:
 
     covers apis like github, which return:
         Link: <https://api.github.com/repos?page=2>; rel="next"
-    '''
+    """
+
     def next_request(_parsed_body: Any, state: Any) -> dict[str, Any] | None:
         headers = state.get('_response_headers', {})
         link_header = ''
@@ -462,19 +498,23 @@ def link_header_pagination(data_path: PathLike = 'items') -> PaginationConfig:
             return _safe_items(resolved, data_path) if resolved is not None else resp
         return resp
 
-    return cast('PaginationConfig', {
-        '_rf_pagination_helper': True,
-        'next_request': next_request,
-        'on_response': on_response,
-    })
+    return cast(
+        'PaginationConfig',
+        {
+            '_rf_pagination_helper': True,
+            'next_request': next_request,
+            'on_response': on_response,
+        },
+    )
 
 
 def url_header_pagination(header_name: str, data_path: PathLike = 'items') -> PaginationConfig:
-    '''
+    """
     pagination via a named response header whose value is the next URL.
     header lookup is case-insensitive. if the header is absent or empty,
     pagination stops normally. the header value is used as-is as the next URL.
-    '''
+    """
+
     def next_request(_parsed_body: Any, state: Any) -> dict[str, Any] | None:
         headers = state.get('_response_headers', {})
         next_url = ''
@@ -492,15 +532,18 @@ def url_header_pagination(header_name: str, data_path: PathLike = 'items') -> Pa
             return _safe_items(resolved, data_path) if resolved is not None else resp
         return resp
 
-    return cast('PaginationConfig', {
-        '_rf_pagination_helper': True,
-        'next_request': next_request,
-        'on_response': on_response,
-    })
+    return cast(
+        'PaginationConfig',
+        {
+            '_rf_pagination_helper': True,
+            'next_request': next_request,
+            'on_response': on_response,
+        },
+    )
 
 
 def _parse_link_next(link_header: str) -> str | None:
-    '''
+    """
     parses RFC 5988 Link header, returns the url for rel="next" or None.
 
     handles:
@@ -513,7 +556,7 @@ def _parse_link_next(link_header: str) -> str | None:
     limitation: splits on commas to separate link parts, so URLs containing
     literal commas in query strings would be misparsed. this is vanishingly rare
     in practice and a full RFC 7230 parser is out of scope.
-    '''
+    """
     if not link_header:
         return None
     for part in link_header.split(','):
@@ -539,7 +582,7 @@ def _parse_link_next(link_header: str) -> str | None:
 
 
 class CycleRunner:
-    '''
+    """
     orchestrates the pagination loop for a single FetchJob.
     constructed from the resolved pagination config dict.
 
@@ -555,7 +598,7 @@ class CycleRunner:
     state is a plain dict carried across all pages.
     _response_headers is injected into state automatically so pagination
     callbacks can access headers without needing the raw http response.
-    '''
+    """
 
     def __init__(self, pagination_config):
         self._next_request = None
@@ -582,13 +625,11 @@ class CycleRunner:
         self._initial_params = cfg.get('initial_params', {})
 
         if self._next_request is None:
-            raise PaginationError(
-                'pagination is enabled but next_request callback is not defined'
-            )
+            raise PaginationError('pagination is enabled but next_request callback is not defined')
 
     @property
     def initial_params(self) -> dict[str, Any]:
-        'extra params to inject into the first request when using built-in strategies'
+        "extra params to inject into the first request when using built-in strategies"
         return self._initial_params
 
     def _record_stop(self, page_state: dict[str, Any], stop: StopSignal) -> None:
@@ -612,7 +653,7 @@ class CycleRunner:
         initial_state: dict[str, Any] | None = None,
         mode: Literal['fetch', 'stream'] = 'fetch',
     ) -> Any:
-        '''
+        """
         runs the full pagination loop.
         fetch_fn(request_kwargs, ctx, *, run_state=None) -> _RequestOutcome
         ctx is always passed; fetch_fn implementations that don't use it should accept ctx=None.
@@ -638,7 +679,7 @@ class CycleRunner:
             page_state is the single run-local state dict for this run(). It is seeded once
             from initial_state, then initial_params override that seed, then runner metadata
             such as _request is injected. Callbacks receive StateView(page_state).
-        '''
+        """
         page_state = dict(initial_state or {})
         request = dict(initial_request)
         if self._initial_params:
@@ -663,9 +704,27 @@ class CycleRunner:
                     self._record_stop(page_state, stop)
                     if run_state is not None and hasattr(run_state, 'emit_event'):
                         source = _event_source(run_state)
-                        event_data = run_state.stop_event_data(stop) if hasattr(run_state, 'stop_event_data') else {'stop_kind': stop.kind, 'observed': stop.observed, 'limit': stop.limit}
-                        run_state.emit_event(now_event(kind='stopped', source=source, endpoint=getattr(run_state, 'endpoint_name', None), url=request.get('url'), data=event_data))
-                    logger.debug('max_pages reached: %d / %d — stopping cleanly', stop.observed, stop.limit)
+                        event_data = (
+                            run_state.stop_event_data(stop)
+                            if hasattr(run_state, 'stop_event_data')
+                            else {
+                                'stop_kind': stop.kind,
+                                'observed': stop.observed,
+                                'limit': stop.limit,
+                            }
+                        )
+                        run_state.emit_event(
+                            now_event(
+                                kind='stopped',
+                                source=source,
+                                endpoint=getattr(run_state, 'endpoint_name', None),
+                                url=request.get('url'),
+                                data=event_data,
+                            )
+                        )
+                    logger.debug(
+                        'max_pages reached: %d / %d — stopping cleanly', stop.observed, stop.limit
+                    )
                     break
 
             if run_state is not None and hasattr(run_state, 'reset_page_cycle'):
@@ -676,22 +735,46 @@ class CycleRunner:
                 self._record_stop(page_state, fetch_result)
                 if run_state is not None and hasattr(run_state, 'emit_event'):
                     source = _event_source(run_state)
-                    event_data = run_state.stop_event_data(fetch_result) if hasattr(run_state, 'stop_event_data') else {'stop_kind': fetch_result.kind, 'observed': fetch_result.observed, 'limit': fetch_result.limit}
-                    run_state.emit_event(now_event(kind='stopped', source=source, endpoint=getattr(run_state, 'endpoint_name', None), url=request.get('url'), data=event_data))
-                logger.debug('max_requests reached: %d / %d — stopping cleanly', fetch_result.observed, fetch_result.limit)
+                    event_data = (
+                        run_state.stop_event_data(fetch_result)
+                        if hasattr(run_state, 'stop_event_data')
+                        else {
+                            'stop_kind': fetch_result.kind,
+                            'observed': fetch_result.observed,
+                            'limit': fetch_result.limit,
+                        }
+                    )
+                    run_state.emit_event(
+                        now_event(
+                            kind='stopped',
+                            source=source,
+                            endpoint=getattr(run_state, 'endpoint_name', None),
+                            url=request.get('url'),
+                            data=event_data,
+                        )
+                    )
+                logger.debug(
+                    'max_requests reached: %d / %d — stopping cleanly',
+                    fetch_result.observed,
+                    fetch_result.limit,
+                )
                 # fire on_page_complete for error_stop outcomes so hook can observe them
                 # (no sleep is performed since stop is already decided; return is still validated)
-                if self._on_page_complete is not None and run_state is not None and hasattr(run_state, 'build_page_cycle_outcome'):
-                    if fetch_result.kind == 'error_stop':
-                        _last_err = getattr(run_state, '_last_error', None)
-                        _err_status = getattr(_last_err, 'status_code', None)
-                        _err_outcome = run_state.build_page_cycle_outcome(
-                            status_code=_err_status,
-                            error=_last_err,
-                            stop_signal=fetch_result,
-                        )
-                        _raw = self._on_page_complete(_err_outcome, StateView(page_state))
-                        _validate_adaptive_delay(_raw)  # enforce contract; sleep is skipped
+                if (
+                    self._on_page_complete is not None
+                    and run_state is not None
+                    and hasattr(run_state, 'build_page_cycle_outcome')
+                    and fetch_result.kind == 'error_stop'
+                ):
+                    _last_err = getattr(run_state, '_last_error', None)
+                    _err_status = getattr(_last_err, 'status_code', None)
+                    _err_outcome = run_state.build_page_cycle_outcome(
+                        status_code=_err_status,
+                        error=_last_err,
+                        stop_signal=fetch_result,
+                    )
+                    _raw = self._on_page_complete(_err_outcome, StateView(page_state))
+                    _validate_adaptive_delay(_raw)  # enforce contract; sleep is skipped
                 break
 
             page_payload = fetch_result.parsed
@@ -702,7 +785,17 @@ class CycleRunner:
 
             if run_state is not None and hasattr(run_state, 'emit_event'):
                 source = _event_source(run_state)
-                run_state.emit_event(now_event(kind='page_parsed', source=source, endpoint=getattr(run_state, 'endpoint_name', None), url=post_auth_request.get('url'), data=run_state.page_parsed_event_data(status_code=headers.get('_status_code'))))
+                run_state.emit_event(
+                    now_event(
+                        kind='page_parsed',
+                        source=source,
+                        endpoint=getattr(run_state, 'endpoint_name', None),
+                        url=post_auth_request.get('url'),
+                        data=run_state.page_parsed_event_data(
+                            status_code=headers.get('_status_code')
+                        ),
+                    )
+                )
 
             # expose a defensive snapshot of the effective request to callbacks.
             # this preserves useful request context in state['_request'] without letting
@@ -715,11 +808,25 @@ class CycleRunner:
 
             if self._on_response:
                 try:
-                    page_data = safe_call(self._on_response, page_payload, state, name='on_response')
+                    page_data = safe_call(
+                        self._on_response, page_payload, state, name='on_response'
+                    )
                 except CallbackError as exc:
                     if run_state is not None and hasattr(run_state, 'emit_event'):
                         source = _event_source(run_state)
-                        run_state.emit_event(now_event(kind='callback_error', source=source, endpoint=getattr(run_state, 'endpoint_name', None), url=post_auth_request.get('url'), data={'callback': 'on_response', 'exception_type': type(exc).__name__, 'exception_msg': str(exc)}))
+                        run_state.emit_event(
+                            now_event(
+                                kind='callback_error',
+                                source=source,
+                                endpoint=getattr(run_state, 'endpoint_name', None),
+                                url=post_auth_request.get('url'),
+                                data={
+                                    'callback': 'on_response',
+                                    'exception_type': type(exc).__name__,
+                                    'exception_msg': str(exc),
+                                },
+                            )
+                        )
                     raise
             else:
                 page_data = page_payload
@@ -729,7 +836,19 @@ class CycleRunner:
             except CallbackError as exc:
                 if run_state is not None and hasattr(run_state, 'emit_event'):
                     source = _event_source(run_state)
-                    run_state.emit_event(now_event(kind='callback_error', source=source, endpoint=getattr(run_state, 'endpoint_name', None), url=post_auth_request.get('url'), data={'callback': 'on_page', 'exception_type': type(exc).__name__, 'exception_msg': str(exc)}))
+                    run_state.emit_event(
+                        now_event(
+                            kind='callback_error',
+                            source=source,
+                            endpoint=getattr(run_state, 'endpoint_name', None),
+                            url=post_auth_request.get('url'),
+                            data={
+                                'callback': 'on_page',
+                                'exception_type': type(exc).__name__,
+                                'exception_msg': str(exc),
+                            },
+                        )
+                    )
                 raise
 
             if all_pages is not None:
@@ -739,11 +858,25 @@ class CycleRunner:
 
             if self._update_state:
                 try:
-                    updated = safe_call(self._update_state, page_payload, state, name='update_state')
+                    updated = safe_call(
+                        self._update_state, page_payload, state, name='update_state'
+                    )
                 except CallbackError as exc:
                     if run_state is not None and hasattr(run_state, 'emit_event'):
                         source = _event_source(run_state)
-                        run_state.emit_event(now_event(kind='callback_error', source=source, endpoint=getattr(run_state, 'endpoint_name', None), url=post_auth_request.get('url'), data={'callback': 'update_state', 'exception_type': type(exc).__name__, 'exception_msg': str(exc)}))
+                        run_state.emit_event(
+                            now_event(
+                                kind='callback_error',
+                                source=source,
+                                endpoint=getattr(run_state, 'endpoint_name', None),
+                                url=post_auth_request.get('url'),
+                                data={
+                                    'callback': 'update_state',
+                                    'exception_type': type(exc).__name__,
+                                    'exception_msg': str(exc),
+                                },
+                            )
+                        )
                     raise
                 # update_state is the one callback allowed to persist values across pages.
                 # it returns a dict to merge into the live run-local page_state.
@@ -769,8 +902,16 @@ class CycleRunner:
             # before next_request is called. not fired on on_error->'raise'.
             # Returns an adaptive delay (seconds) to apply if pagination continues.
             _adaptive_delay_s = None
-            if self._on_page_complete is not None and run_state is not None and hasattr(run_state, 'build_page_cycle_outcome'):
-                _cycle_stop = page_state.get('_stop_signal') if isinstance(page_state.get('_stop_signal'), StopSignal) else None
+            if (
+                self._on_page_complete is not None
+                and run_state is not None
+                and hasattr(run_state, 'build_page_cycle_outcome')
+            ):
+                _cycle_stop = (
+                    page_state.get('_stop_signal')
+                    if isinstance(page_state.get('_stop_signal'), StopSignal)
+                    else None
+                )
                 _last_err = getattr(run_state, '_last_error', None)
                 _outcome = run_state.build_page_cycle_outcome(
                     status_code=headers.get('_status_code') if headers else None,
@@ -788,7 +929,19 @@ class CycleRunner:
             except CallbackError as exc:
                 if run_state is not None and hasattr(run_state, 'emit_event'):
                     source = _event_source(run_state)
-                    run_state.emit_event(now_event(kind='callback_error', source=source, endpoint=getattr(run_state, 'endpoint_name', None), url=request.get('url'), data={'callback': 'next_request', 'exception_type': type(exc).__name__, 'exception_msg': str(exc)}))
+                    run_state.emit_event(
+                        now_event(
+                            kind='callback_error',
+                            source=source,
+                            endpoint=getattr(run_state, 'endpoint_name', None),
+                            url=request.get('url'),
+                            data={
+                                'callback': 'next_request',
+                                'exception_type': type(exc).__name__,
+                                'exception_msg': str(exc),
+                            },
+                        )
+                    )
                 raise
 
             if overrides is None:
@@ -796,8 +949,18 @@ class CycleRunner:
                 self._record_stop(page_state, stop)
                 if run_state is not None and hasattr(run_state, 'emit_event'):
                     source = _event_source(run_state)
-                    run_state.emit_event(now_event(kind='stopped', source=source, endpoint=getattr(run_state, 'endpoint_name', None), url=request.get('url'), data=run_state.stop_event_data(stop)))
-                logger.debug('next_request returned None — pagination complete after %d pages', page_num)
+                    run_state.emit_event(
+                        now_event(
+                            kind='stopped',
+                            source=source,
+                            endpoint=getattr(run_state, 'endpoint_name', None),
+                            url=request.get('url'),
+                            data=run_state.stop_event_data(stop),
+                        )
+                    )
+                logger.debug(
+                    'next_request returned None — pagination complete after %d pages', page_num
+                )
                 break
 
             # params_mode='replace' means replace the params mapping entirely instead of
@@ -839,17 +1002,25 @@ class CycleRunner:
                 if run_state is not None:
                     run_state.mark_wait('adaptive', _adaptive_delay_s)
                 if _emit is not None and run_state is not None:
-                    _emit(now_event(
-                        kind='adaptive_wait_end',
-                        source=_source,
-                        endpoint=_ep,
-                        url=post_auth_request.get('url'),
-                        data=run_state.wait_event_data('adaptive', wait_ms=_adaptive_delay_s * 1000.0),
-                    ))
+                    _emit(
+                        now_event(
+                            kind='adaptive_wait_end',
+                            source=_source,
+                            endpoint=_ep,
+                            url=post_auth_request.get('url'),
+                            data=run_state.wait_event_data(
+                                'adaptive', wait_ms=_adaptive_delay_s * 1000.0
+                            ),
+                        )
+                    )
                 if ctx is not None:
                     ctx.check_deadline()
 
-        final_page_state = {k: v for k, v in page_state.items() if k not in {'_completed_pages', '_request', '_response_headers', '_stop_signal'}}
+        final_page_state = {
+            k: v
+            for k, v in page_state.items()
+            if k not in {'_completed_pages', '_request', '_response_headers', '_stop_signal'}
+        }
         final_state = StateView(final_page_state)
 
         if mode == 'fetch' and all_pages is not None:
@@ -858,7 +1029,19 @@ class CycleRunner:
             except CallbackError as exc:
                 if run_state is not None and hasattr(run_state, 'emit_event'):
                     source = _event_source(run_state)
-                    run_state.emit_event(now_event(kind='callback_error', source=source, endpoint=getattr(run_state, 'endpoint_name', None), url=request.get('url'), data={'callback': 'on_complete', 'exception_type': type(exc).__name__, 'exception_msg': str(exc)}))
+                    run_state.emit_event(
+                        now_event(
+                            kind='callback_error',
+                            source=source,
+                            endpoint=getattr(run_state, 'endpoint_name', None),
+                            url=request.get('url'),
+                            data={
+                                'callback': 'on_complete',
+                                'exception_type': type(exc).__name__,
+                                'exception_msg': str(exc),
+                            },
+                        )
+                    )
                 raise
             yield (result if result is not None else all_pages)
             return
@@ -867,6 +1050,7 @@ class CycleRunner:
         # StreamSummary object can be shared with metrics-session recording and
         # stream_run() summary capture. runner.run() leaves stream completion
         # callback invocation to that outer layer.
+
 
 def build_cycle_runner(pagination_config: dict[str, Any] | None) -> CycleRunner:
     """Build a CycleRunner from a pagination config dict."""

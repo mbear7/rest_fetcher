@@ -1,4 +1,4 @@
-'''
+"""
 Illustrative example: non-JSON pagination using XPath.
 
 This library is not a web-scraping framework. This script exists to show how
@@ -17,9 +17,7 @@ Don’t focus on 'Consultant' or 'calendar'. Focus on:
 - Pagination driven by parsed XML elements (parsed_body)
 - Byte-faithful recording (playback.record_as_bytes=True) for exact XML fidelity
 The committed fixture makes it run offline by default.
-'''
-
-
+"""
 
 from __future__ import annotations
 
@@ -132,13 +130,15 @@ def _extract_year(tree: Any, year: int) -> list[dict[str, Any]]:
 
     for table in tree.xpath("//table[contains(@class,'cal')]"):
         for rec in _parse_month(table, year):
-            rows.append({
-                'date': f'{rec.dt:%Y-%m-%d}',
-                'month_ru': _MONTHS_RU.get(rec.dt.month, ''),
-                'kind': rec.kind,
-                'working': int(rec.kind.casefold() in _WORKING_KINDS),
-                'year': year,
-            })
+            rows.append(
+                {
+                    'date': f'{rec.dt:%Y-%m-%d}',
+                    'month_ru': _MONTHS_RU.get(rec.dt.month, ''),
+                    'kind': rec.kind,
+                    'working': int(rec.kind.casefold() in _WORKING_KINDS),
+                    'year': year,
+                }
+            )
 
     return rows
 

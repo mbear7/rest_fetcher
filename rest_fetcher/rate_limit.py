@@ -26,11 +26,13 @@ class RateLimitConfig:
 
 
 class TokenBucket:
-    def __init__(self, rps: float, burst: int, *, clock: ClockFn | None = None, sleep: SleepFn | None = None) -> None:
+    def __init__(
+        self, rps: float, burst: int, *, clock: ClockFn | None = None, sleep: SleepFn | None = None
+    ) -> None:
         if rps <= 0:
-            raise SchemaError("rate_limit.requests_per_second must be > 0")
+            raise SchemaError('rate_limit.requests_per_second must be > 0')
         if burst <= 0:
-            raise SchemaError("rate_limit.burst must be > 0")
+            raise SchemaError('rate_limit.burst must be > 0')
 
         self._rps = float(rps)
         self._capacity = int(burst)
@@ -69,7 +71,6 @@ class TokenBucket:
             if self._tokens >= 0:
                 return 0.0
             return (-self._tokens) / self._rps
-
 
     def sleep(self, seconds: float) -> None:
         if seconds <= 0:

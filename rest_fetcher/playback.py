@@ -32,7 +32,9 @@ _XML_DECL_RE = re.compile(r"^\s*<\?xml[^>]*encoding\s*=\s*['\"]([^'\"]+)['\"]", 
 def _validate_xml_body(body: str) -> None:
     match = _XML_DECL_RE.search(body)
     if match and match.group(1).lower() != 'utf-8':
-        raise FixtureFormatError('xml textual fixture must declare utf-8 or omit the xml encoding declaration')
+        raise FixtureFormatError(
+            'xml textual fixture must declare utf-8 or omit the xml encoding declaration'
+        )
 
 
 @dataclass
@@ -78,7 +80,9 @@ class RecordedResponse:
             try:
                 return body.encode(encoding)
             except LookupError as e:
-                raise FixtureFormatError(f'invalid encoding {encoding!r} for textual fixture') from e
+                raise FixtureFormatError(
+                    f'invalid encoding {encoding!r} for textual fixture'
+                ) from e
         raise FixtureFormatError(f'cannot reconstruct content for fixture format {self.format!r}')
 
     def json(self):
@@ -87,7 +91,9 @@ class RecordedResponse:
 
 def deserialize_playback_response(envelope: dict[str, Any]) -> RecordedResponse:
     if not isinstance(envelope, dict):
-        raise FixtureFormatError(f'invalid playback envelope: expected dict, got {type(envelope).__name__}')
+        raise FixtureFormatError(
+            f'invalid playback envelope: expected dict, got {type(envelope).__name__}'
+        )
     if envelope.get('kind') != 'raw_response':
         raise FixtureFormatError('invalid raw playback envelope: expected kind="raw_response"')
 
@@ -104,19 +110,27 @@ def deserialize_playback_response(envelope: dict[str, Any]) -> RecordedResponse:
     url = envelope.get('url') or ''
     encoding = envelope.get('encoding')
     if encoding is not None and not isinstance(encoding, str):
-        raise FixtureFormatError('invalid raw playback envelope: encoding must be a string if provided')
+        raise FixtureFormatError(
+            'invalid raw playback envelope: encoding must be a string if provided'
+        )
 
     has_body = 'body' in envelope
     has_b64 = 'content_b64' in envelope
 
     if has_body and has_b64:
-        raise FixtureFormatError('invalid raw playback envelope: body and content_b64 are mutually exclusive')
+        raise FixtureFormatError(
+            'invalid raw playback envelope: body and content_b64 are mutually exclusive'
+        )
     if not has_body and not has_b64:
-        raise FixtureFormatError('invalid raw playback envelope: expected one of body or content_b64')
+        raise FixtureFormatError(
+            'invalid raw playback envelope: expected one of body or content_b64'
+        )
 
     if fmt == 'bytes':
         if has_body:
-            raise FixtureFormatError('invalid raw playback envelope: bytes fixtures must use content_b64, not body')
+            raise FixtureFormatError(
+                'invalid raw playback envelope: bytes fixtures must use content_b64, not body'
+            )
         payload = envelope.get('content_b64')
         if not isinstance(payload, str):
             if isinstance(payload, list):

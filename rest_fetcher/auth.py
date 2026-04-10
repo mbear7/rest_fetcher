@@ -10,20 +10,20 @@ logger = logging.getLogger('rest_fetcher.auth')
 
 
 class BaseAuth:
-    'base class for all auth handlers, subclass and implement apply()'
+    "base class for all auth handlers, subclass and implement apply()"
 
     def apply(self, request_kwargs):
-        '''
+        """
         receives the current request kwargs dict,
         returns modified request kwargs with auth injected.
         request_kwargs keys mirror requests.Session.request() signature:
             headers, params, json, data, auth, ...
-        '''
+        """
         raise NotImplementedError
 
 
 class BearerAuth(BaseAuth):
-    '''
+    """
     injects Authorization: Bearer <token> header.
     token can be a static string or a callable that returns a string —
     useful for tokens that rotate or are fetched from a vault at runtime.
@@ -33,7 +33,7 @@ class BearerAuth(BaseAuth):
 
     schema example (dynamic):
         'auth': {'type': 'bearer', 'token_callback': lambda config: get_token_from_vault(config['param_name'])}
-    '''
+    """
 
     def __init__(self, auth_config, config_view=None):
         self._token = auth_config.get('token')
@@ -49,12 +49,12 @@ class BearerAuth(BaseAuth):
 
 
 class BasicAuth(BaseAuth):
-    '''
+    """
     injects http basic auth credentials.
 
     schema example:
         'auth': {'type': 'basic', 'username': 'user', 'password': 'pass'}
-    '''
+    """
 
     def __init__(self, auth_config):
         self._username = auth_config['username']
@@ -65,7 +65,7 @@ class BasicAuth(BaseAuth):
 
 
 class _OAuth2BaseAuth(BaseAuth):
-    'shared token-fetching and caching logic for oauth2 handlers.'
+    "shared token-fetching and caching logic for oauth2 handlers."
 
     def __init__(self, auth_config, timeout=30):
         self._token_url = auth_config['token_url']
@@ -124,7 +124,7 @@ class _OAuth2BaseAuth(BaseAuth):
 
 
 class OAuth2Auth(_OAuth2BaseAuth):
-    '''
+    """
     client credentials oauth2 flow.
     fetches a token from token_url using client_id and client_secret,
     caches it and refreshes automatically when it expires.
@@ -138,7 +138,7 @@ class OAuth2Auth(_OAuth2BaseAuth):
             'scope': 'read:data',          # optional
             'expiry_margin': 60            # optional, seconds before expiry to refresh (default 60)
         }
-    '''
+    """
 
     def _build_payload(self):
         payload = {
@@ -152,11 +152,11 @@ class OAuth2Auth(_OAuth2BaseAuth):
 
 
 class OAuth2PasswordAuth(_OAuth2BaseAuth):
-    '''
+    """
     password grant oauth2 flow.
     fetches a token from token_url using client credentials and user credentials,
     caches it and re-authenticates automatically when it expires.
-    '''
+    """
 
     def __init__(self, auth_config, timeout=30):
         super().__init__(auth_config, timeout=timeout)
@@ -177,7 +177,7 @@ class OAuth2PasswordAuth(_OAuth2BaseAuth):
 
 
 class CallbackAuth(BaseAuth):
-    '''
+    """
     fully custom auth via user-supplied callable.
     handler receives (request_kwargs, config_view) and must return modified request_kwargs.
     gives full control: can modify headers, params, body, or anything else.
@@ -190,7 +190,7 @@ class CallbackAuth(BaseAuth):
                 'headers': {**req.get('headers', {}), 'X-Api-Key': config.get('api_key')}
             }
         }
-    '''
+    """
 
     def __init__(self, auth_config, config_view=None):
         self._handler = auth_config['handler']
@@ -218,12 +218,12 @@ _OAUTH_TIMEOUT_HANDLERS = {OAuth2Auth, OAuth2PasswordAuth}
 
 
 def build_auth_handler(auth_config, config_view=None, timeout=30):
-    '''
+    """
     factory: receives the auth sub-dict from the schema and returns
     the appropriate BaseAuth subclass instance.
 
     returns None if auth_config is None (no auth needed).
-    '''
+    """
     if auth_config is None:
         return None
 

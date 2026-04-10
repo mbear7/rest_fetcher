@@ -49,9 +49,9 @@ HeaderMap = dict[str, Any]
 TimeoutValue = float | tuple[float, float]
 
 _LOG_LEVELS = {
-    'none':    logging.CRITICAL + 1,
-    'error':   logging.ERROR,
-    'medium':  logging.INFO,
+    'none': logging.CRITICAL + 1,
+    'error': logging.ERROR,
+    'medium': logging.INFO,
     'verbose': logging.DEBUG,
 }
 
@@ -59,7 +59,7 @@ _MISSING = object()
 
 
 def _enrich_exc(exc: RequestError, endpoint: str, method: str, url: str) -> None:
-    'attach request context to a RequestError if not already set.'
+    "attach request context to a RequestError if not already set."
     if exc.endpoint is None:
         exc.endpoint = endpoint
     if exc.method is None:
@@ -70,26 +70,37 @@ def _enrich_exc(exc: RequestError, endpoint: str, method: str, url: str) -> None
 
 # default set of header names (lowercase) whose values are always redacted in logs
 _SCRUB_HEADERS_DEFAULT = {
-    'authorization', 'x-api-key', 'x-api-secret', 'x-auth-token',
-    'api-key', 'proxy-authorization', 'cookie', 'set-cookie',
+    'authorization',
+    'x-api-key',
+    'x-api-secret',
+    'x-auth-token',
+    'api-key',
+    'proxy-authorization',
+    'cookie',
+    'set-cookie',
 }
 
 # substring patterns: any header key containing one of these (case-insensitive) is scrubbed
 _SCRUB_PATTERNS = ('token', 'secret', 'password', 'key', 'auth')
 
 _SCRUB_QUERY_PARAMS_DEFAULT = {
-    'access_token', 'refresh_token', 'api_key', 'client_secret',
-    'token', 'sig', 'signature',
+    'access_token',
+    'refresh_token',
+    'api_key',
+    'client_secret',
+    'token',
+    'sig',
+    'signature',
 }
 _SCRUB_QUERY_PATTERNS = ('token', 'secret', 'key', 'sig', 'auth')
 
 
 def _scrub(headers: HeaderMap, extra_scrub: list[str] | None = None) -> HeaderMap:
-    '''
+    """
     redacts sensitive header values before logging.
     exact-match: _SCRUB_HEADERS_DEFAULT + schema scrub_headers list.
     pattern-match: any header key containing 'token', 'secret', 'password', 'key', 'auth'.
-    '''
+    """
     exact = _SCRUB_HEADERS_DEFAULT | {h.lower() for h in (extra_scrub or [])}
     result = {}
     for k, v in headers.items():
@@ -101,13 +112,12 @@ def _scrub(headers: HeaderMap, extra_scrub: list[str] | None = None) -> HeaderMa
     return result
 
 
-
 def _scrub_recorded_url(url: str, extra_scrub: list[str] | None = None) -> str:
-    '''
+    """
     redact sensitive query parameter values in recorded playback URLs.
     exact-match: built-in query defaults + schema scrub_query_params list.
     pattern-match: any query key containing one of _SCRUB_QUERY_PATTERNS.
-    '''
+    """
     from urllib.parse import parse_qsl, urlencode, urlsplit
 
     if not url:
@@ -147,10 +157,10 @@ def _scrub_playback_envelope(
 
 
 def _resolve(key: str, *dicts: dict[str, Any], default: Any = None) -> Any:
-    '''resolve a config value by priority, skipping None.
+    """resolve a config value by priority, skipping None.
 
     priority order is left-to-right; the first non-None value wins.
-    '''
+    """
     for d in dicts:
         v = d.get(key)
         if v is not None:
@@ -159,12 +169,12 @@ def _resolve(key: str, *dicts: dict[str, Any], default: Any = None) -> Any:
 
 
 def _resolve_explicit(key: str, *dicts: dict[str, Any], default: Any = None) -> Any:
-    '''resolve a config value by priority, preserving explicit None.
+    """resolve a config value by priority, preserving explicit None.
 
     priority order is left-to-right; the first dict that defines the key wins,
     even when the value is None. This is used for settings where `None` is an
     intentional override rather than "keep searching".
-    '''
+    """
     for d in dicts:
         if key in d:
             return d[key]
@@ -179,31 +189,29 @@ def _has_token_bucket_config(cfg: dict[str, Any] | None) -> bool:
 
 
 def _parser_arity(fn):
-    '''
+    """
     inspects callable signature once at construction time to determine whether
     the response parser expects 1 arg (response) or 2 args (response, parsed).
     handles functions, lambdas, methods, and callable instances.
     returns 1 or 2; defaults to 1 on any inspection failure.
-    '''
+    """
     try:
         sig = inspect.signature(fn)
         # count all positional-capable parameters (required or optional) —
         # a parser declaring 'def p(resp, parsed=None)' intends to receive parsed
         positional_capable = [
-            p for p in sig.parameters.values()
-            if p.kind in (inspect.Parameter.POSITIONAL_ONLY,
-                          inspect.Parameter.POSITIONAL_OR_KEYWORD)
+            p
+            for p in sig.parameters.values()
+            if p.kind
+            in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
         ]
         # *args can also accept a second positional argument
         has_var_positional = any(
-            p.kind is inspect.Parameter.VAR_POSITIONAL
-            for p in sig.parameters.values()
+            p.kind is inspect.Parameter.VAR_POSITIONAL for p in sig.parameters.values()
         )
         return 2 if (len(positional_capable) >= 2 or has_var_positional) else 1
     except (ValueError, TypeError):
         return 1
-
-
 
 
 @dataclass(frozen=True)
@@ -367,7 +375,15 @@ class _RunState:
             'seconds_since_last_request': self.seconds_since_last_request(now),
         }
 
-    def request_end_event_data(self, *, status_code: int | None, elapsed_ms: float, bytes_received: int = 0, retry_bytes_received: int = 0, now: float | None = None) -> dict[str, Any]:
+    def request_end_event_data(
+        self,
+        *,
+        status_code: int | None,
+        elapsed_ms: float,
+        bytes_received: int = 0,
+        retry_bytes_received: int = 0,
+        now: float | None = None,
+    ) -> dict[str, Any]:
         self.record_attempt_elapsed(elapsed_ms, now=now)
         return {
             'status_code': status_code,
@@ -385,14 +401,20 @@ class _RunState:
         stop_signal: StopSignal | None,
     ) -> PageCycleOutcome:
         from .types import PageCycleOutcome
+
         kind: Literal['success', 'skipped', 'stopped'] = 'success'
         if stop_signal is not None:
             kind = 'stopped'
         elif error is not None and self._last_error_action == 'skip':
             kind = 'skipped'
         cycle_elapsed_ms = None
-        if self._page_cycle_started_mono is not None and self._page_cycle_last_response_mono is not None:
-            cycle_elapsed_ms = max(0.0, (self._page_cycle_last_response_mono - self._page_cycle_started_mono) * 1000.0)
+        if (
+            self._page_cycle_started_mono is not None
+            and self._page_cycle_last_response_mono is not None
+        ):
+            cycle_elapsed_ms = max(
+                0.0, (self._page_cycle_last_response_mono - self._page_cycle_started_mono) * 1000.0
+            )
         return PageCycleOutcome(
             kind=kind,
             status_code=status_code,
@@ -402,7 +424,9 @@ class _RunState:
             cycle_elapsed_ms=cycle_elapsed_ms,
         )
 
-    def page_parsed_event_data(self, *, status_code: int | None = None, now: float | None = None) -> dict[str, Any]:
+    def page_parsed_event_data(
+        self, *, status_code: int | None = None, now: float | None = None
+    ) -> dict[str, Any]:
         data = self.progress_fields(now)
         data['status_code'] = status_code
         data['pages_so_far'] = self.pages_so_far + 1
@@ -410,35 +434,50 @@ class _RunState:
 
     def stop_event_data(self, stop: StopSignal, now: float | None = None) -> dict[str, Any]:
         data = self.progress_fields(now)
-        data.update({
-            'stop': {
-                'kind': stop.kind,
-                'limit': stop.limit,
+        data.update(
+            {
+                'stop': {
+                    'kind': stop.kind,
+                    'limit': stop.limit,
+                    'observed': stop.observed,
+                },
+                'stop_kind': stop.kind,
                 'observed': stop.observed,
-            },
-            'stop_kind': stop.kind,
-            'observed': stop.observed,
-            'limit': stop.limit,
-        })
+                'limit': stop.limit,
+            }
+        )
         return data
 
-    def wait_event_data(self, wait_type: str, *, wait_ms: float, now: float | None = None, extra: dict[str, Any] | None = None) -> dict[str, Any]:
+    def wait_event_data(
+        self,
+        wait_type: str,
+        *,
+        wait_ms: float,
+        now: float | None = None,
+        extra: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         data = {'wait_type': wait_type, 'wait_ms': wait_ms}
         if wait_type == 'proactive':
-            data.update({
-                'proactive_waits_so_far': self.proactive_waits_so_far,
-                'proactive_wait_seconds_so_far': self.proactive_wait_seconds_so_far,
-            })
+            data.update(
+                {
+                    'proactive_waits_so_far': self.proactive_waits_so_far,
+                    'proactive_wait_seconds_so_far': self.proactive_wait_seconds_so_far,
+                }
+            )
         elif wait_type == 'reactive':
-            data.update({
-                'reactive_waits_so_far': self.reactive_waits_so_far,
-                'reactive_wait_seconds_so_far': self.reactive_wait_seconds_so_far,
-            })
+            data.update(
+                {
+                    'reactive_waits_so_far': self.reactive_waits_so_far,
+                    'reactive_wait_seconds_so_far': self.reactive_wait_seconds_so_far,
+                }
+            )
         elif wait_type == 'adaptive':
-            data.update({
-                'adaptive_waits_so_far': self.adaptive_waits_so_far,
-                'adaptive_wait_seconds_so_far': self.adaptive_wait_seconds_so_far,
-            })
+            data.update(
+                {
+                    'adaptive_waits_so_far': self.adaptive_waits_so_far,
+                    'adaptive_wait_seconds_so_far': self.adaptive_wait_seconds_so_far,
+                }
+            )
         else:
             raise ValueError(f'unknown wait_type: {wait_type!r}')
         if extra:
@@ -462,7 +501,10 @@ class _RunState:
             rate_limit_wait_seconds=rate_limit_wait_seconds,
             adaptive_wait_seconds=adaptive_wait_seconds,
             static_wait_seconds=static_wait_seconds,
-            total_wait_seconds=retry_wait_seconds + rate_limit_wait_seconds + adaptive_wait_seconds + static_wait_seconds,
+            total_wait_seconds=retry_wait_seconds
+            + rate_limit_wait_seconds
+            + adaptive_wait_seconds
+            + static_wait_seconds,
             bytes_received=self.bytes_received_so_far,
             retry_bytes_received=self.retry_bytes_received_so_far,
         )
@@ -477,11 +519,11 @@ class _RequestOutcome:
 
 
 class _FetchJob:
-    '''
+    """
     runtime object for a single endpoint fetch — created per call by APIClient, not reused.
     orchestrates auth, request building, retry, response parsing,
     pagination, and all user callbacks.
-    '''
+    """
 
     def __init__(
         self,
@@ -492,7 +534,10 @@ class _FetchJob:
         retry_config: Any,
         call_params: dict[str, Any] | None = None,
         initial_state: dict[str, Any] | None = None,
-        shared_token_bucket_provider: Callable[[str, str, dict[str, Any] | None], TokenBucket | None] | None = None,
+        shared_token_bucket_provider: Callable[
+            [str, str, dict[str, Any] | None], TokenBucket | None
+        ]
+        | None = None,
         metrics_session: MetricsSession | None = None,
     ) -> None:
         self._endpoint_name = endpoint_name
@@ -510,10 +555,20 @@ class _FetchJob:
         self._rate_limit = resolved.rate_limit
         self._rate_limit_source = resolved.rate_limit_source
         self._token_bucket = None
-        self._rate_limit_cfg = build_token_bucket(self._rate_limit) if self._rate_limit is not None and _has_token_bucket_config(self._rate_limit) else None
-        self._rate_limit_rps = self._rate_limit_cfg.requests_per_second if self._rate_limit_cfg is not None else None
-        self._rate_limit_burst = self._rate_limit_cfg.burst if self._rate_limit_cfg is not None else None
-        self._rate_limit_on_limit = self._rate_limit_cfg.on_limit if self._rate_limit_cfg is not None else 'wait'
+        self._rate_limit_cfg = (
+            build_token_bucket(self._rate_limit)
+            if self._rate_limit is not None and _has_token_bucket_config(self._rate_limit)
+            else None
+        )
+        self._rate_limit_rps = (
+            self._rate_limit_cfg.requests_per_second if self._rate_limit_cfg is not None else None
+        )
+        self._rate_limit_burst = (
+            self._rate_limit_cfg.burst if self._rate_limit_cfg is not None else None
+        )
+        self._rate_limit_on_limit = (
+            self._rate_limit_cfg.on_limit if self._rate_limit_cfg is not None else 'wait'
+        )
 
         self._base_url = resolved.base_url
         self._extra_scrub = resolved.extra_scrub
@@ -537,7 +592,11 @@ class _FetchJob:
         self._playback = resolved.playback
         self._record_as_bytes = resolved.record_as_bytes
         self._retry_config = resolved.retry_config
-        retry_rate_limit = {'respect_retry_after': False, 'min_delay': 0.0} if resolved.rate_limit_disabled else resolved.rate_limit
+        retry_rate_limit = (
+            {'respect_retry_after': False, 'min_delay': 0.0}
+            if resolved.rate_limit_disabled
+            else resolved.rate_limit
+        )
         effective_retry_config = self._retry_config
         if effective_retry_config is None:
             effective_retry_config = dict(client_schema.get('retry', {}) or {})
@@ -546,31 +605,58 @@ class _FetchJob:
             effective_retry_config = None
         self._retry = build_retry_handler(effective_retry_config, retry_rate_limit)
         if self._shared_token_bucket_provider is not None and self._rate_limit_cfg is not None:
-            self._token_bucket = self._shared_token_bucket_provider(self._endpoint_name, self._rate_limit_source, self._rate_limit)
+            self._token_bucket = self._shared_token_bucket_provider(
+                self._endpoint_name, self._rate_limit_source, self._rate_limit
+            )
 
     def _current_stop_signal(self, run_state: _RunState) -> StopSignal | None:
-        stop = run_state.page_state.get('_stop_signal') if isinstance(run_state.page_state, dict) else None
+        stop = (
+            run_state.page_state.get('_stop_signal')
+            if isinstance(run_state.page_state, dict)
+            else None
+        )
         return stop if isinstance(stop, StopSignal) else None
 
     def _current_final_state(self, run_state: _RunState) -> StateView:
         page_state = run_state.page_state if isinstance(run_state.page_state, dict) else {}
         final_page_state = {
-            k: v for k, v in page_state.items()
+            k: v
+            for k, v in page_state.items()
             if k not in {'_completed_pages', '_request', '_response_headers', '_stop_signal'}
         }
         return StateView(final_page_state)
 
-    def _invoke_stream_on_complete(self, summary: StreamSummary, run_state: _RunState, initial_request: dict[str, Any]) -> None:
+    def _invoke_stream_on_complete(
+        self, summary: StreamSummary, run_state: _RunState, initial_request: dict[str, Any]
+    ) -> None:
         if self._runner._on_complete is None:
             return
         final_state = self._current_final_state(run_state)
-        page_request = run_state.page_state.get('_request') if isinstance(run_state.page_state, dict) else None
-        callback_url = page_request.get('url') if isinstance(page_request, dict) else initial_request.get('url')
+        page_request = (
+            run_state.page_state.get('_request') if isinstance(run_state.page_state, dict) else None
+        )
+        callback_url = (
+            page_request.get('url')
+            if isinstance(page_request, dict)
+            else initial_request.get('url')
+        )
         try:
             safe_call(self._runner._on_complete, summary, final_state, name='on_complete')
         except CallbackError as exc:
             source = run_state.event_source
-            run_state.emit_event(now_event(kind='callback_error', source=source, endpoint=getattr(run_state, 'endpoint_name', None), url=callback_url, data={'callback': 'on_complete', 'exception_type': type(exc).__name__, 'exception_msg': str(exc)}))
+            run_state.emit_event(
+                now_event(
+                    kind='callback_error',
+                    source=source,
+                    endpoint=getattr(run_state, 'endpoint_name', None),
+                    url=callback_url,
+                    data={
+                        'callback': 'on_complete',
+                        'exception_type': type(exc).__name__,
+                        'exception_msg': str(exc),
+                    },
+                )
+            )
             raise
 
     def _record_metrics_summary(self, summary: StreamSummary, *, failed: bool) -> None:
@@ -590,14 +676,18 @@ class _FetchJob:
         base_url = client_schema['base_url'].rstrip('/')
 
         extra_scrub = _resolve('scrub_headers', call_params, cfg, client_schema, default=[])
-        extra_scrub_query = _resolve('scrub_query_params', call_params, cfg, client_schema, default=[])
+        extra_scrub_query = _resolve(
+            'scrub_query_params', call_params, cfg, client_schema, default=[]
+        )
 
         log_level_key = cfg.get('log_level', 'medium')
         log_level = _LOG_LEVELS.get(log_level_key, logging.INFO)
         debug = cfg.get('debug', False)
         timeout = cfg.get('timeout', client_schema.get('timeout', 30))
 
-        response_format = _resolve('response_format', call_params, cfg, client_schema, default='auto')
+        response_format = _resolve(
+            'response_format', call_params, cfg, client_schema, default='auto'
+        )
         csv_delimiter = _resolve('csv_delimiter', call_params, cfg, client_schema, default=';')
         encoding = _resolve('encoding', call_params, cfg, client_schema, default='utf-8')
         call_rate_limit = _resolve_explicit('rate_limit', call_params, default=_MISSING)
@@ -617,7 +707,7 @@ class _FetchJob:
             rate_limit_source = 'missing'
         rate_limit_disabled = resolved_rate_limit is None
         rate_limit = None if resolved_rate_limit is _MISSING else resolved_rate_limit
-        retry_config = cfg['retry'] if 'retry' in cfg else _MISSING
+        retry_config = cfg.get('retry', _MISSING)
 
         response_parser = cfg.get('response_parser')
         canonical_parser = _resolve('canonical_parser', call_params, cfg, client_schema)
@@ -640,8 +730,7 @@ class _FetchJob:
         # endpoint-level presence wins (even if None). helper fallback only when key is absent.
         _hook_names = ('on_response', 'on_page', 'on_complete', 'on_page_complete', 'update_state')
         _lifecycle_hooks = {
-            hk: cfg[hk] if hk in cfg else _helper_hooks.get(hk)
-            for hk in _hook_names
+            hk: cfg[hk] if hk in cfg else _helper_hooks.get(hk) for hk in _hook_names
         }
 
         if isinstance(pagination_cfg, dict):
@@ -718,45 +807,32 @@ class _FetchJob:
             try:
                 path = path.format(**path_params)
             except KeyError as e:
-                raise SchemaError(
-                    f'path template {path!r} missing path_param: {e}'
-                ) from e
+                raise SchemaError(f'path template {path!r} missing path_param: {e}') from e
         # warn if unreplaced placeholders remain — catches the case where the caller
         # forgot path_params entirely; the request would go out with literal {id} in the URL
         remaining = re.findall(r'\{(\w+)\}', path)
         if remaining:
             logger.warning(
                 'path %r still contains unreplaced placeholder(s): %s — did you forget path_params?',
-                path, remaining
+                path,
+                remaining,
             )
         return f'{self._base_url}/{path}' if path else self._base_url
 
     def _build_initial_request(self):
-        'assembles the first request kwargs from schema + call-time params'
+        "assembles the first request kwargs from schema + call-time params"
         method = self._cfg.get('method', 'GET').upper()
         url = self._build_url()
 
-        headers = merge_dicts(
-            self._cfg.get('headers', {}),
-            self._call_params.get('headers', {})
-        )
-        params = merge_dicts(
-            self._cfg.get('params', {}),
-            self._call_params.get('params', {})
-        )
+        headers = merge_dicts(self._cfg.get('headers', {}), self._call_params.get('headers', {}))
+        params = merge_dicts(self._cfg.get('params', {}), self._call_params.get('params', {}))
 
         # inject initial pagination params if built-in strategy provides them
         params = merge_dicts(self._runner.initial_params, params)
 
-        body = merge_dicts(
-            self._cfg.get('body', {}),
-            self._call_params.get('body', {})
-        )
+        body = merge_dicts(self._cfg.get('body', {}), self._call_params.get('body', {}))
 
-        form = merge_dicts(
-            self._cfg.get('form', {}),
-            self._call_params.get('form', {})
-        )
+        form = merge_dicts(self._cfg.get('form', {}), self._call_params.get('form', {}))
 
         if 'files' in self._call_params:
             files = self._call_params.get('files')
@@ -791,7 +867,9 @@ class _FetchJob:
 
         return request
 
-    def _apply_on_request(self, request_kwargs: dict[str, Any], *, run_state: Any) -> dict[str, Any]:
+    def _apply_on_request(
+        self, request_kwargs: dict[str, Any], *, run_state: Any
+    ) -> dict[str, Any]:
         if self._on_request is None:
             return request_kwargs
         state = StateView(run_state.page_state if run_state is not None else {})
@@ -810,29 +888,39 @@ class _FetchJob:
 
         if self._token_bucket is None:
             cfg = self._rate_limit_cfg
-            self._token_bucket = TokenBucket(cfg.requests_per_second, cfg.burst, clock=cfg.clock, sleep=cfg.sleep)
+            self._token_bucket = TokenBucket(
+                cfg.requests_per_second, cfg.burst, clock=cfg.clock, sleep=cfg.sleep
+            )
 
         wait_s = self._token_bucket.acquire(1.0)
         if wait_s <= 0:
             return
 
         planned_ms = wait_s * 1000.0
-        self._emit_event(now_event(
-            kind='rate_limit_wait_start',
-            source='live',
-            endpoint=self._endpoint_name,
-            url=url,
-            data={'planned_ms': planned_ms, 'rps': self._rate_limit_rps, 'burst': self._rate_limit_burst},
-        ))
-
-        if self._rate_limit_on_limit == 'raise':
-            self._emit_event(now_event(
-                kind='rate_limit_exceeded',
+        self._emit_event(
+            now_event(
+                kind='rate_limit_wait_start',
                 source='live',
                 endpoint=self._endpoint_name,
                 url=url,
-                data={'rps': self._rate_limit_rps, 'burst': self._rate_limit_burst},
-            ))
+                data={
+                    'planned_ms': planned_ms,
+                    'rps': self._rate_limit_rps,
+                    'burst': self._rate_limit_burst,
+                },
+            )
+        )
+
+        if self._rate_limit_on_limit == 'raise':
+            self._emit_event(
+                now_event(
+                    kind='rate_limit_exceeded',
+                    source='live',
+                    endpoint=self._endpoint_name,
+                    url=url,
+                    data={'rps': self._rate_limit_rps, 'burst': self._rate_limit_burst},
+                )
+            )
             raise RateLimitExceeded('rate limit exceeded')
 
         start_wait = time.monotonic()
@@ -842,13 +930,31 @@ class _FetchJob:
         if run_state is not None:
             run_state.mark_wait('proactive', end_wait - start_wait)
 
-        self._emit_event(now_event(
-            kind='rate_limit_wait_end',
-            source='live',
-            endpoint=self._endpoint_name,
-            url=url,
-            data=run_state.wait_event_data('proactive', wait_ms=wait_ms, extra={'planned_ms': planned_ms, 'rps': self._rate_limit_rps, 'burst': self._rate_limit_burst}) if run_state is not None else {'wait_type': 'proactive', 'wait_ms': wait_ms, 'planned_ms': planned_ms, 'rps': self._rate_limit_rps, 'burst': self._rate_limit_burst},
-        ))
+        self._emit_event(
+            now_event(
+                kind='rate_limit_wait_end',
+                source='live',
+                endpoint=self._endpoint_name,
+                url=url,
+                data=run_state.wait_event_data(
+                    'proactive',
+                    wait_ms=wait_ms,
+                    extra={
+                        'planned_ms': planned_ms,
+                        'rps': self._rate_limit_rps,
+                        'burst': self._rate_limit_burst,
+                    },
+                )
+                if run_state is not None
+                else {
+                    'wait_type': 'proactive',
+                    'wait_ms': wait_ms,
+                    'planned_ms': planned_ms,
+                    'rps': self._rate_limit_rps,
+                    'burst': self._rate_limit_burst,
+                },
+            )
+        )
 
     def _execute_request(
         self,
@@ -857,7 +963,7 @@ class _FetchJob:
         *,
         run_state: Any = None,
     ) -> _RequestOutcome | StopSignal:
-        '''
+        """
         executes one http request through auth + retry layers.
         returns a _RequestOutcome. request_kwargs in the outcome are post-auth
         request kwargs — guaranteed to
@@ -866,7 +972,7 @@ class _FetchJob:
 
         ctx: optional OperationContext forwarded to RetryHandler for per-attempt
              limit checks (deadline, max_requests). mock path applies the same checks.
-        '''
+        """
         if run_state is None:
             raise RuntimeError('internal error: run_state is required')
         request_kwargs = self._apply_on_request(request_kwargs, run_state=run_state)
@@ -875,10 +981,14 @@ class _FetchJob:
             request_kwargs = self._auth.apply(request_kwargs)
 
         if self._debug or self._log_level <= logging.DEBUG:
-            self._log(logging.DEBUG, 'request: %s %s headers=%s params=%s',
-                request_kwargs['method'], request_kwargs['url'],
+            self._log(
+                logging.DEBUG,
+                'request: %s %s headers=%s params=%s',
+                request_kwargs['method'],
+                request_kwargs['url'],
                 _scrub(request_kwargs.get('headers', {}), self._extra_scrub),
-                request_kwargs.get('params'))
+                request_kwargs.get('params'),
+            )
 
         if self._mock is not None:
             # mock path is still part of the engine lifecycle; emit request events for observability
@@ -893,44 +1003,51 @@ class _FetchJob:
 
             start_mono = time.monotonic()
             run_state.mark_request_start(now=start_mono)
-            self._emit_event(now_event(
-                kind='request_start',
-                source='live',
-                endpoint=self._endpoint_name,
-                url=request_kwargs.get('url'),
-                data={'method': request_kwargs.get('method')},
-                mono=start_mono,
-            ))
+            self._emit_event(
+                now_event(
+                    kind='request_start',
+                    source='live',
+                    endpoint=self._endpoint_name,
+                    url=request_kwargs.get('url'),
+                    data={'method': request_kwargs.get('method')},
+                    mono=start_mono,
+                )
+            )
 
             if self._playback and self._playback.should_save:
-                raise PlaybackError('playback save is not supported with mock responses; re-record against a real HTTP response')
+                raise PlaybackError(
+                    'playback save is not supported with mock responses; re-record against a real HTTP response'
+                )
 
             parsed, hdrs = self._execute_mock(request_kwargs, run_state=run_state)
 
             end_mono = time.monotonic()
             elapsed_ms = (end_mono - start_mono) * 1000.0
-            self._emit_event(now_event(
-                kind='request_end',
-                source='live',
-                endpoint=self._endpoint_name,
-                url=request_kwargs.get('url'),
-                data=run_state.request_end_event_data(status_code=None, elapsed_ms=elapsed_ms, now=end_mono),
-                mono=end_mono,
-            ))
+            self._emit_event(
+                now_event(
+                    kind='request_end',
+                    source='live',
+                    endpoint=self._endpoint_name,
+                    url=request_kwargs.get('url'),
+                    data=run_state.request_end_event_data(
+                        status_code=None, elapsed_ms=elapsed_ms, now=end_mono
+                    ),
+                    mono=end_mono,
+                )
+            )
 
-            return _RequestOutcome(parsed_body=parsed, parsed=parsed, headers=hdrs, request_kwargs=request_kwargs)
+            return _RequestOutcome(
+                parsed_body=parsed, parsed=parsed, headers=hdrs, request_kwargs=request_kwargs
+            )
 
         # capture post-auth values locally — not on self, since _execute_request
         # is called once per page and instance state would just reflect the last page
         method = request_kwargs['method']
         url = request_kwargs['url']
-        session_kwargs = {
-            k: v for k, v in request_kwargs.items()
-            if k not in ('method', 'url')
-        }
+        session_kwargs = {k: v for k, v in request_kwargs.items() if k not in ('method', 'url')}
         self._apply_rate_limit(url, run_state=run_state)
 
-        def retryable(first_attempt_mono: float | None = None):
+        def retryable(first_attempt_mono: float | None = None) -> Any:
             # Request timing is tracked here, inside the retried operation, so each
             # attempt gets its own start marker while the outer request-cycle helper
             # remains responsible for the shared event/accounting envelope. The first
@@ -950,7 +1067,9 @@ class _FetchJob:
             ctx=ctx,
         )
 
-    def _handle_error_response(self, response, method=None, url=None, request_kwargs=None, run_state=None):
+    def _handle_error_response(
+        self, response, method=None, url=None, request_kwargs=None, run_state=None
+    ):
         """Handle policy for an HTTP error response by constructing RequestError locally.
 
         This method is not called from inside an active ``except`` block. When
@@ -963,10 +1082,12 @@ class _FetchJob:
         try:
             body = response.json()
             # anthropic-style: {"type": "error", "error": {"type": "...", "message": "..."}}
-            api_msg = (body.get('error', {}).get('message')
-                       or body.get('message')
-                       or body.get('detail')
-                       or '')
+            api_msg = (
+                body.get('error', {}).get('message')
+                or body.get('message')
+                or body.get('detail')
+                or ''
+            )
         except Exception:
             api_msg = response.text[:300] if response.text else ''
 
@@ -990,20 +1111,23 @@ class _FetchJob:
             # its return value ('raise' / 'skip' / 'stop') is a control-flow signal,
             # and exceptions raised inside it are meant to propagate unchanged. routing
             # this through safe_call would wrap them in CallbackError and change the contract.
-            state_for_error = (run_state.page_state if run_state is not None else {})
+            state_for_error = run_state.page_state if run_state is not None else {}
             error_headers = dict(response.headers)
             error_headers['_status_code'] = response.status_code
             state_for_error['_response_headers'] = error_headers
             action = self._on_error(exc, StateView(state_for_error))
             if action == 'skip':
-                self._log(logging.WARNING, 'on_error returned skip for status %d',
-                    response.status_code)
+                self._log(
+                    logging.WARNING, 'on_error returned skip for status %d', response.status_code
+                )
                 if run_state is not None:
                     run_state._last_error = exc
                     run_state._last_error_action = 'skip'
                 skip_headers = dict(response.headers)
                 skip_headers['_status_code'] = response.status_code
-                return _RequestOutcome(parsed_body={}, parsed={}, headers=skip_headers, request_kwargs=request_kwargs)
+                return _RequestOutcome(
+                    parsed_body={}, parsed={}, headers=skip_headers, request_kwargs=request_kwargs
+                )
             elif action == 'raise':
                 # This helper constructs RequestError locally and is not running
                 # under an active `except` for that object. Use `raise exc` here.
@@ -1029,7 +1153,9 @@ class _FetchJob:
                 )
         raise exc
 
-    def _execute_mock(self, request_kwargs: dict[str, Any], *, run_state: _RunState) -> tuple[Any, dict[str, Any]]:
+    def _execute_mock(
+        self, request_kwargs: dict[str, Any], *, run_state: _RunState
+    ) -> tuple[Any, dict[str, Any]]:
         # mock path bypasses HTTP entirely: no auth injection, no retry handling,
         # and no network-level request execution. it only feeds deterministic
         # prebuilt responses into the same downstream processing contract.
@@ -1052,13 +1178,24 @@ class _FetchJob:
         final_url = request_kwargs.get('url')
 
         if self._debug:
-            self._log(logging.DEBUG, 'raw response status=%d body=%s',
-                response.status_code, response.text[:500])
+            self._log(
+                logging.DEBUG,
+                'raw response status=%d body=%s',
+                response.status_code,
+                response.text[:500],
+            )
 
-        self._log(logging.INFO, 'status=%d url=%s', response.status_code, getattr(response, 'url', final_url))
+        self._log(
+            logging.INFO,
+            'status=%d url=%s',
+            response.status_code,
+            getattr(response, 'url', final_url),
+        )
 
         if not response.ok:
-            return self._handle_error_response(response, final_method, final_url, request_kwargs, run_state=run_state)
+            return self._handle_error_response(
+                response, final_method, final_url, request_kwargs, run_state=run_state
+            )
 
         headers = dict(response.headers)
         headers['_status_code'] = response.status_code
@@ -1082,18 +1219,25 @@ class _FetchJob:
                 'url': getattr(response, 'url', final_url) or final_url or '',
                 'request_kwargs': dict(request_kwargs),
             }
-            parsed_default = safe_call(self._canonical_parser, bytes(content), ctx, name='canonical_parser')
+            parsed_default = safe_call(
+                self._canonical_parser, bytes(content), ctx, name='canonical_parser'
+            )
         if self._response_parser is None:
             parsed = parsed_default
         elif self._parser_arity == 2:
-            parsed = safe_call(self._response_parser, response, parsed_default,
-                                name='response_parser')
+            parsed = safe_call(
+                self._response_parser, response, parsed_default, name='response_parser'
+            )
         else:
             parsed = safe_call(self._response_parser, response, name='response_parser')
 
         if allow_playback and self._playback and self._playback.should_save:
             playback_page = serialize_response_for_playback(
-                response, self._response_format, request_kwargs=request_kwargs, encoding=self._encoding, record_as_bytes=self._record_as_bytes
+                response,
+                self._response_format,
+                request_kwargs=request_kwargs,
+                encoding=self._encoding,
+                record_as_bytes=self._record_as_bytes,
             )
             playback_page = _scrub_playback_envelope(
                 playback_page,
@@ -1102,7 +1246,12 @@ class _FetchJob:
             )
             run_state.playback_pages.append(playback_page)
 
-        return _RequestOutcome(parsed_body=parsed_default, parsed=parsed, headers=headers, request_kwargs=request_kwargs)
+        return _RequestOutcome(
+            parsed_body=parsed_default,
+            parsed=parsed,
+            headers=headers,
+            request_kwargs=request_kwargs,
+        )
 
     def _handle_request_cycle_error(
         self,
@@ -1128,20 +1277,40 @@ class _FetchJob:
         _enrich_exc(exc, self._endpoint_name, method, url)
         end_mono = time.monotonic()
         elapsed_ms = (end_mono - start_mono) * 1000.0
-        _bytes = len(exc.response.content) if exc.response is not None and hasattr(exc.response, 'content') else 0
+        _bytes = (
+            len(exc.response.content)
+            if exc.response is not None and hasattr(exc.response, 'content')
+            else 0
+        )
         _retry_bytes = _bytes if run_state.is_retry_attempt() else 0
         if _bytes:
             run_state.mark_bytes_received(_bytes)
         if _retry_bytes:
             run_state.mark_retry_bytes_received(_retry_bytes)
-        self._emit_event(now_event(kind='request_end', source=source, endpoint=self._endpoint_name, url=url,
-                           data=run_state.request_end_event_data(status_code=exc.status_code, elapsed_ms=elapsed_ms, bytes_received=_bytes, retry_bytes_received=run_state.current_page_retry_bytes_received(), now=end_mono), mono=end_mono))
+        self._emit_event(
+            now_event(
+                kind='request_end',
+                source=source,
+                endpoint=self._endpoint_name,
+                url=url,
+                data=run_state.request_end_event_data(
+                    status_code=exc.status_code,
+                    elapsed_ms=elapsed_ms,
+                    bytes_received=_bytes,
+                    retry_bytes_received=run_state.current_page_retry_bytes_received(),
+                    now=end_mono,
+                ),
+                mono=end_mono,
+            )
+        )
         if self._on_error:
             action = self._on_error(exc, StateView(run_state.page_state))
             if action == 'skip':
                 run_state._last_error = exc
                 run_state._last_error_action = 'skip'
-                return _RequestOutcome(parsed_body={}, parsed={}, headers={}, request_kwargs=request_kwargs)
+                return _RequestOutcome(
+                    parsed_body={}, parsed={}, headers={}, request_kwargs=request_kwargs
+                )
             elif action == 'raise':
                 # This helper runs inside the active `except RequestError` path in
                 # `_run_request_cycle`. Bare `raise` preserves the original
@@ -1153,9 +1322,17 @@ class _FetchJob:
                 run_state._last_error_action = 'stop'
                 return StopSignal(kind='error_stop')
             elif action is None:
-                raise CallbackError('on_error returned None — must return "raise", "skip", or "stop"', callback_name='on_error', cause=None)
+                raise CallbackError(
+                    'on_error returned None — must return "raise", "skip", or "stop"',
+                    callback_name='on_error',
+                    cause=None,
+                )
             else:
-                raise CallbackError(f'on_error must return "raise", "skip", or "stop", got {action!r}', callback_name='on_error', cause=None)
+                raise CallbackError(
+                    f'on_error must return "raise", "skip", or "stop", got {action!r}',
+                    callback_name='on_error',
+                    cause=None,
+                )
         raise
 
     def _finish_request_cycle(
@@ -1172,14 +1349,18 @@ class _FetchJob:
         end_mono = time.monotonic()
         elapsed_ms = (end_mono - start_mono) * 1000.0
         if isinstance(response, StopSignal):
-            self._emit_event(now_event(
-                kind='request_end',
-                source=source,
-                endpoint=self._endpoint_name,
-                url=url,
-                data=run_state.request_end_event_data(status_code=None, elapsed_ms=elapsed_ms, now=end_mono),
-                mono=end_mono,
-            ))
+            self._emit_event(
+                now_event(
+                    kind='request_end',
+                    source=source,
+                    endpoint=self._endpoint_name,
+                    url=url,
+                    data=run_state.request_end_event_data(
+                        status_code=None, elapsed_ms=elapsed_ms, now=end_mono
+                    ),
+                    mono=end_mono,
+                )
+            )
             return response
 
         _bytes = len(response.content)
@@ -1187,9 +1368,25 @@ class _FetchJob:
         run_state.mark_bytes_received(_bytes)
         if _retry_bytes:
             run_state.mark_retry_bytes_received(_retry_bytes)
-        self._emit_event(now_event(kind='request_end', source=source, endpoint=self._endpoint_name, url=url,
-                           data=run_state.request_end_event_data(status_code=getattr(response, 'status_code', None), elapsed_ms=elapsed_ms, bytes_received=_bytes, retry_bytes_received=run_state.current_page_retry_bytes_received(), now=end_mono), mono=end_mono))
-        return self._process_response(response, request_kwargs, allow_playback=allow_playback, run_state=run_state)
+        self._emit_event(
+            now_event(
+                kind='request_end',
+                source=source,
+                endpoint=self._endpoint_name,
+                url=url,
+                data=run_state.request_end_event_data(
+                    status_code=getattr(response, 'status_code', None),
+                    elapsed_ms=elapsed_ms,
+                    bytes_received=_bytes,
+                    retry_bytes_received=run_state.current_page_retry_bytes_received(),
+                    now=end_mono,
+                ),
+                mono=end_mono,
+            )
+        )
+        return self._process_response(
+            response, request_kwargs, allow_playback=allow_playback, run_state=run_state
+        )
 
     def _run_request_cycle(
         self,
@@ -1204,8 +1401,16 @@ class _FetchJob:
         ctx: Any = None,
     ) -> _RequestOutcome | StopSignal:
         start_mono = time.monotonic()
-        self._emit_event(now_event(kind='request_start', source=source, endpoint=self._endpoint_name, url=url,
-                           data={'method': method}, mono=start_mono))
+        self._emit_event(
+            now_event(
+                kind='request_start',
+                source=source,
+                endpoint=self._endpoint_name,
+                url=url,
+                data={'method': method},
+                mono=start_mono,
+            )
+        )
 
         def _on_retry(info):
             if info.get('current_attempt', 1) > 1:
@@ -1213,19 +1418,32 @@ class _FetchJob:
                 if _retry_bytes:
                     run_state.mark_retry_bytes_received(_retry_bytes)
             run_state.mark_retry()
-            self._emit_event(now_event(kind='retry', source=source, endpoint=self._endpoint_name, url=url,
-                               data={**info, 'retries_so_far': run_state.retries_so_far}))
+            self._emit_event(
+                now_event(
+                    kind='retry',
+                    source=source,
+                    endpoint=self._endpoint_name,
+                    url=url,
+                    data={**info, 'retries_so_far': run_state.retries_so_far},
+                )
+            )
 
         def _on_wait(seconds, planned_seconds, cause):
             run_state.mark_wait('reactive', seconds, cause=cause)
             if cause in {'retry_after', 'min_delay'}:
-                self._emit_event(now_event(
-                    kind='rate_limit_wait_end',
-                    source=source,
-                    endpoint=self._endpoint_name,
-                    url=url,
-                    data=run_state.wait_event_data('reactive', wait_ms=seconds * 1000.0, extra={'planned_ms': planned_seconds * 1000.0, 'cause': cause}),
-                ))
+                self._emit_event(
+                    now_event(
+                        kind='rate_limit_wait_end',
+                        source=source,
+                        endpoint=self._endpoint_name,
+                        url=url,
+                        data=run_state.wait_event_data(
+                            'reactive',
+                            wait_ms=seconds * 1000.0,
+                            extra={'planned_ms': planned_seconds * 1000.0, 'cause': cause},
+                        ),
+                    )
+                )
 
         first_attempt = True
 
@@ -1258,12 +1476,16 @@ class _FetchJob:
             allow_playback=allow_playback,
         )
 
-    def _playback_fetch(self, records_iter: Iterator[Any]) -> Callable[..., _RequestOutcome | StopSignal]:
-        def fetch(request_kwargs: dict[str, Any], ctx: Any = None, *, run_state: _RunState) -> _RequestOutcome | StopSignal:
+    def _playback_fetch(
+        self, records_iter: Iterator[Any]
+    ) -> Callable[..., _RequestOutcome | StopSignal]:
+        def fetch(
+            request_kwargs: dict[str, Any], ctx: Any = None, *, run_state: _RunState
+        ) -> _RequestOutcome | StopSignal:
             method = request_kwargs['method']
             url = request_kwargs['url']
 
-            def retryable(first_attempt_mono: float | None = None):
+            def retryable(first_attempt_mono: float | None = None) -> Any:
                 # Playback reuses the same request-cycle envelope as live fetches,
                 # but the response source is fixture deserialization rather than an
                 # actual HTTP call. The first attempt reuses the outer request-cycle
@@ -1273,7 +1495,9 @@ class _FetchJob:
                 try:
                     envelope = next(records_iter)
                 except StopIteration as e:
-                    raise PlaybackError('recorded responses exhausted before execution completed') from e
+                    raise PlaybackError(
+                        'recorded responses exhausted before execution completed'
+                    ) from e
                 if not isinstance(envelope, dict) or envelope.get('kind') != 'raw_response':
                     raise PlaybackError('playback files must contain raw response envelopes')
                 return deserialize_playback_response(envelope)
@@ -1298,7 +1522,7 @@ class _FetchJob:
             self._playback.save(run_state.playback_pages)
 
     def _run(self, ctx=None, *, mode='stream', original_on_complete=None):
-        'internal executor — yields according to fetch/stream mode'
+        "internal executor — yields according to fetch/stream mode"
         run_state = _RunState(endpoint_name=self._endpoint_name, emit_event=self._emit_event)
         # terminal_summary is the canonical per-run summary object. It may be
         # constructed on clean completion or during exception handling, but it
@@ -1311,14 +1535,20 @@ class _FetchJob:
         initial_request = self._build_initial_request()
         runner = self._runner
         self._log(
-            logging.INFO, 'starting fetch method=%s url=%s',
-            initial_request['method'], initial_request['url'],
+            logging.INFO,
+            'starting fetch method=%s url=%s',
+            initial_request['method'],
+            initial_request['url'],
         )
         try:
             if self._playback and self._playback.should_load:
                 records = self._playback.load()
                 records_iter = iter(records)
-                self._log(logging.INFO, 'running in playback mode with %d recorded response(s)', len(records))
+                self._log(
+                    logging.INFO,
+                    'running in playback mode with %d recorded response(s)',
+                    len(records),
+                )
                 page_count = 0
                 run_state.event_source = 'playback'
                 try:
@@ -1335,13 +1565,15 @@ class _FetchJob:
                 except RateLimitExceeded:
                     raise
                 except Exception as exc:
-                    self._emit_event(now_event(
-                        kind='error',
-                        source='playback',
-                        endpoint=self._endpoint_name,
-                        url=initial_request.get('url'),
-                        data={'exception_type': type(exc).__name__, 'exception_msg': str(exc)},
-                    ))
+                    self._emit_event(
+                        now_event(
+                            kind='error',
+                            source='playback',
+                            endpoint=self._endpoint_name,
+                            url=initial_request.get('url'),
+                            data={'exception_type': type(exc).__name__, 'exception_msg': str(exc)},
+                        )
+                    )
                     raise
 
                 try:
@@ -1373,13 +1605,15 @@ class _FetchJob:
             except RateLimitExceeded:
                 raise
             except Exception as exc:
-                self._emit_event(now_event(
-                    kind='error',
-                    source='live',
-                    endpoint=self._endpoint_name,
-                    url=initial_request.get('url'),
-                    data={'exception_type': type(exc).__name__, 'exception_msg': str(exc)},
-                ))
+                self._emit_event(
+                    now_event(
+                        kind='error',
+                        source='live',
+                        endpoint=self._endpoint_name,
+                        url=initial_request.get('url'),
+                        data={'exception_type': type(exc).__name__, 'exception_msg': str(exc)},
+                    )
+                )
                 raise
 
             stop_signal = self._current_stop_signal(run_state)
@@ -1416,7 +1650,9 @@ class _FetchJob:
             if can_run_on_complete:
                 if is_stream_mode:
                     try:
-                        self._invoke_stream_on_complete(terminal_summary, run_state, initial_request)
+                        self._invoke_stream_on_complete(
+                            terminal_summary, run_state, initial_request
+                        )
                     except BaseException as exc:
                         post_run_exception = exc
                     else:
@@ -1429,13 +1665,15 @@ class _FetchJob:
             if post_run_exception is not None:
                 raise post_run_exception
 
-    def _generate(self, max_pages=None, max_requests=None, time_limit=None, *, original_on_complete=None):
-        'internal generator — yields one page at a time'
+    def _generate(
+        self, max_pages=None, max_requests=None, time_limit=None, *, original_on_complete=None
+    ):
+        "internal generator — yields one page at a time"
         ctx = OperationContext(max_pages, max_requests, time_limit)
         yield from self._run(ctx, mode='stream', original_on_complete=original_on_complete)
 
     def _collect(self, max_pages=None, max_requests=None, time_limit=None):
-        'internal collector — returns all pages, unwraps single-page results'
+        "internal collector — returns all pages, unwraps single-page results"
         ctx = OperationContext(max_pages, max_requests, time_limit)
         pages = list(self._run(ctx, mode='fetch'))
         return pages[0] if len(pages) == 1 else pages
@@ -1465,7 +1703,7 @@ class _StreamRunImpl:
 
 
 class APIClient:
-    '''
+    """
     main entry point. constructed once per api host, reused across calls.
 
     IMPORTANT — timeouts:
@@ -1497,7 +1735,7 @@ class APIClient:
 
         # pass call-time overrides for params, headers, body
         users = client.fetch('list_users', params={'status': 'active'})
-    '''
+    """
 
     def __init__(self, schema):
         self._schema = validate(schema)
@@ -1529,7 +1767,9 @@ class APIClient:
         self._timeout = schema.get('timeout', 30)
         self._state = dict(schema.get('state', {}))
         self._config_view = MappingProxyType(self._state)
-        self._auth = build_auth_handler(schema.get('auth'), config_view=self._config_view, timeout=self._timeout)
+        self._auth = build_auth_handler(
+            schema.get('auth'), config_view=self._config_view, timeout=self._timeout
+        )
         self._retry_config = schema.get('retry')
         self._token_buckets: dict[tuple[str, str | None], TokenBucket] = {}
         self._token_bucket_lock = threading.Lock()
@@ -1538,13 +1778,15 @@ class APIClient:
         self._log_level = _LOG_LEVELS.get(log_level_key, logging.INFO)
         logger.setLevel(self._log_level)
 
-        logger.info('APIClient ready — base_url=%s endpoints=%s',
+        logger.info(
+            'APIClient ready — base_url=%s endpoints=%s',
             schema['base_url'],
-            list(schema['endpoints'].keys())
+            list(schema['endpoints'].keys()),
         )
 
-
-    def _get_shared_token_bucket(self, endpoint_name: str, rate_limit_source: str, rate_limit_cfg: dict[str, Any] | None) -> TokenBucket | None:
+    def _get_shared_token_bucket(
+        self, endpoint_name: str, rate_limit_source: str, rate_limit_cfg: dict[str, Any] | None
+    ) -> TokenBucket | None:
         if not _has_token_bucket_config(rate_limit_cfg):
             return None
         key: tuple[str, str | None]
@@ -1559,12 +1801,14 @@ class APIClient:
             if bucket is None:
                 assert rate_limit_cfg is not None
                 cfg = build_token_bucket(rate_limit_cfg)
-                bucket = TokenBucket(cfg.requests_per_second, cfg.burst, clock=cfg.clock, sleep=cfg.sleep)
+                bucket = TokenBucket(
+                    cfg.requests_per_second, cfg.burst, clock=cfg.clock, sleep=cfg.sleep
+                )
                 self._token_buckets[key] = bucket
             return bucket
 
     def _make_job(self, endpoint_name, call_params):
-        'creates a fresh FetchJob for a single call'
+        "creates a fresh FetchJob for a single call"
         if endpoint_name not in self._schema['endpoints']:
             raise SchemaError(f'unknown endpoint: {endpoint_name!r}')
         return _FetchJob(
@@ -1580,7 +1824,7 @@ class APIClient:
         )
 
     def fetch(self, endpoint_name: str, **call_params: Any) -> FetchResult:
-        '''
+        """
         fetches the endpoint and returns the final parsed/processed result.
 
         In paginated mode this is normally the aggregated page result.
@@ -1594,8 +1838,8 @@ class APIClient:
                             max_pages, max_requests, time_limit
             client.fetch('list_users', params={'status': 'active'})
             client.fetch('events', max_pages=10, time_limit=30.0)
-        '''
-        max_pages    = call_params.pop('max_pages',    None)
+        """
+        max_pages = call_params.pop('max_pages', None)
         max_requests = call_params.pop('max_requests', None)
         time_limit = call_params.pop('time_limit', None)
         return self._make_job(endpoint_name, call_params)._collect(
@@ -1603,7 +1847,7 @@ class APIClient:
         )
 
     def stream(self, endpoint_name: str, **call_params: Any) -> Iterator[StreamItem]:
-        '''
+        """
         returns a generator that yields parsed/processed page values incrementally.
 
         The yielded value shape depends on response_parser and on_response
@@ -1617,8 +1861,8 @@ class APIClient:
         optional safety caps:
             max_pages, max_requests — stop cleanly and preserve yielded pages.
             time_limit — remains destructive and raises DeadlineExceeded.
-        '''
-        max_pages    = call_params.pop('max_pages',    None)
+        """
+        max_pages = call_params.pop('max_pages', None)
         max_requests = call_params.pop('max_requests', None)
         time_limit = call_params.pop('time_limit', None)
         return self._make_job(endpoint_name, call_params)._generate(
@@ -1626,7 +1870,7 @@ class APIClient:
         )
 
     def stream_run(self, endpoint_name: str, **call_params: Any) -> StreamRun:
-        '''streams pages and exposes a completion summary after exhaustion.
+        """streams pages and exposes a completion summary after exhaustion.
 
         stream_run() returns an iterable wrapper. Iterate it like stream(), then
         inspect run.summary (StreamSummary | None).
@@ -1636,8 +1880,8 @@ class APIClient:
               non-destructive caps like max_pages/max_requests).
             - if you stop iterating early, or if a destructive error occurs
               (e.g. DeadlineExceeded), summary remains None.
-        '''
-        max_pages    = call_params.pop('max_pages',    None)
+        """
+        max_pages = call_params.pop('max_pages', None)
         max_requests = call_params.pop('max_requests', None)
         time_limit = call_params.pop('time_limit', None)
 
@@ -1663,7 +1907,7 @@ class APIClient:
         return _StreamRunImpl(iterator, summary_box)
 
     def close(self) -> None:
-        'closes the underlying requests session. call when done, or use as context manager.'
+        "closes the underlying requests session. call when done, or use as context manager."
         self._session.close()
 
     def __enter__(self) -> APIClient:
