@@ -1,0 +1,100 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rest-fetcher"
+version = "0.5.6"
+description = "A declarative, dict-driven REST API client with pagination, retry, and auth"
+readme = "README.md"
+requires-python = ">=3.10"
+
+license = { text = "MIT" }
+dependencies = [
+    "requests>=2.28",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "ruff>=0.4",
+    "mypy>=1.10",
+    "types-requests",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["rest_fetcher*"]
+
+[tool.setuptools.package-data]
+rest_fetcher = ["py.typed"]
+
+
+# Ruff
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes (undefined names, unused imports)
+    "I",    # isort
+    "UP",   # pyupgrade (modernise syntax)
+    "B",    # flake8-bugbear (likely bugs)
+    "C4",   # flake8-comprehensions
+    "SIM",  # flake8-simplify
+]
+ignore = [
+    "E501",   # line too long — formatter handles this
+    "SIM108", # ternary instead of if/else — readability preference
+    "B007",   # loop variable not used — common in test helpers
+    "E402",   # examples/tests sometimes use local imports intentionally
+    "UP009",  # utf-8 coding cookies in examples are harmless
+    "UP038",  # union style inside isinstance is optional
+]
+
+[tool.ruff.lint.per-file-ignores]
+# examples/examples.py is a documentation-like snippet file, not a runnable module.
+"examples/examples.py" = ["F821", "I001"]
+# Other examples may keep imports local for readability.
+"examples/*.py" = ["I001"]
+# Tests prioritize readability over a few style rules.
+"tests/*.py" = ["I001", "SIM117", "E731", "UP015", "F811", "F841", "E702", "W293"]
+"docs/render_cheatsheet.py" = ["SIM102"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["rest_fetcher"]
+
+[tool.ruff.format]
+quote-style = "single"
+
+# mypy
+[tool.mypy]
+python_version = "3.10"
+strict = false            # strict is opt-in per module; start permissive
+
+# strict for the types module — it's the one that matters most
+[[tool.mypy.overrides]]
+module = "rest_fetcher.types"
+strict = true
+disallow_untyped_defs = true
+disallow_any_generics = false  # TypedDicts with dict[str, Any] are fine
+
+# type-check the rest but don't error on missing annotations or calls to
+# unannotated internals — consistent with "public surface only" annotation strategy
+[[tool.mypy.overrides]]
+module = "rest_fetcher.*"
+disallow_untyped_defs = false
+disallow_untyped_calls = false
+warn_return_any = false
+ignore_missing_imports = true
+
+# pytest
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-q --tb=short"
