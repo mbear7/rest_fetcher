@@ -794,3 +794,77 @@ for cross-page tracking, `on_page_complete` for adaptive pacing.
 # RIGHT — max_retry_after belongs under retry
 'retry': {'max_retry_after': 30}
 ```
+
+---
+
+## 12. Schema validation and IDE-friendly authoring
+
+### Validation behavior
+
+`validate()` is called automatically by `APIClient`. It defaults to `strict=True`.
+
+**strict=True (default):** unknown keys at any schema boundary raise `SchemaError`.
+All unknown-key issues across the entire schema are collected before raising, so you
+see every problem in one pass:
+
+```
+SchemaError:
+schema[root]: unknown key 'retrry' in 'root'. Allowed keys: auth, base_url, ...
+  Did you mean 'retry'?
+schema[endpoints.users]: unknown key 'on_respnse' in 'endpoints.users'. Allowed keys: ...
+  Did you mean 'on_response'?
+```
+
+**strict=False:** unknown keys emit `SchemaValidationWarning` instead of raising.
+Useful during development or when introducing experimental keys. Filter with Python's
+standard `warnings` module:
+
+```python
+import warnings
+from rest_fetcher.exceptions import SchemaValidationWarning
+
+warnings.filterwarnings('ignore', category=SchemaValidationWarning)
+```
+
+**Always strict, regardless of mode:** type errors, missing required fields, and
+semantic checks (e.g. `body` and `form` mutually exclusive) fail immediately on the
+first problem found. The `strict` flag only controls unknown-key handling.
+
+### IDE-friendly schema authoring
+
+Inline untyped dict literals give no key suggestions in most IDEs. Two approaches fix this:
+
+**Option 1: TypedDict annotation**
+
+```python
+from rest_fetcher.types import ClientSchema, EndpointSchema
+
+schema: ClientSchema = {
+    'base_url': 'https://api.example.com/v1',
+    'auth': {'type': 'bearer', 'token': 'my-token'},
+    'endpoints': {
+        'users': EndpointSchema(method='GET', path='/users', params={'active': True}),
+    },
+}
+client = APIClient(schema)
+```
+
+`ClientSchema` covers all top-level keys. `EndpointSchema` covers all endpoint-level keys.
+Both are `TypedDict(total=False)` — all keys are optional at the type level; required keys
+are enforced at runtime by `validate()`.
+
+**Option 2: SchemaBuilder**
+
+```python
+from rest_fetcher import SchemaBuilder
+
+schema = (
+    SchemaBuilder('https://api.example.com/v1')
+    .bearer('my-token')
+    .endpoint('users', method='GET', path='/users', params={'active': True})
+    .build()
+)
+client = APIClient(schema)
+```
+
+Both approaches produce identical plain dicts at runtime. The choice is stylistic.

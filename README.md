@@ -88,6 +88,12 @@ schema = (
 client = APIClient(schema)
 ```
 
+## Schema validation
+
+`validate()` is called automatically by `APIClient` and defaults to `strict=True`: unknown keys raise `SchemaError` with all issues reported together, including typo suggestions and the list of allowed keys. Pass `strict=False` to emit `SchemaValidationWarning` instead of raising.
+
+For IDE autocompletion and mypy support, annotate raw dict schemas with `ClientSchema` / `EndpointSchema` from `rest_fetcher.types`, or use `SchemaBuilder` — see [docs/schema_guide.md](docs/schema_guide.md#12-schema-validation-and-ide-friendly-authoring).
+
 ## Response formats
 
 `rest_fetcher` supports non-JSON responses as a first-class feature via

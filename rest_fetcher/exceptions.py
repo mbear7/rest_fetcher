@@ -17,6 +17,10 @@ class SchemaError(RestFetcherError):
     pass
 
 
+class SchemaValidationWarning(UserWarning):
+    pass
+
+
 class AuthError(RestFetcherError):
     "raised when authentication fails or auth config is invalid"
 

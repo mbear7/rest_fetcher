@@ -1,7 +1,9 @@
+import difflib
+import warnings
 from typing import Any
 
 from .events import _KNOWN_EVENT_KINDS
-from .exceptions import SchemaError
+from .exceptions import SchemaError, SchemaValidationWarning
 from .metrics import MetricsSession
 from .parsing import VALID_RESPONSE_FORMATS
 
@@ -15,6 +17,31 @@ _VALID_LOG_LEVELS = {'none', 'error', 'medium', 'verbose'}
 
 def _err(path, msg):
     raise SchemaError(f'schema[{path}]: {msg}')
+
+
+def _suggest_key(bad_key: str, allowed: set[str]) -> str | None:
+    matches = difflib.get_close_matches(bad_key, allowed, n=1, cutoff=0.6)
+    return matches[0] if matches else None
+
+
+def _format_unknown_keys_message(unknown: list[str], *, where: str, allowed: set[str]) -> str:
+    allowed_str = ', '.join(sorted(allowed))
+    keys = list(unknown)
+    if len(keys) == 1:
+        key = keys[0]
+        msg = f"unknown key {key!r} in '{where}'. Allowed keys: {allowed_str}."
+        suggestion = _suggest_key(key, allowed)
+        if suggestion:
+            msg += f' Did you mean {suggestion!r}?'
+        return msg
+    lines = [f"unknown keys in '{where}'. Allowed keys: {allowed_str}."]
+    for key in keys:
+        line = f'  {key!r}'
+        suggestion = _suggest_key(key, allowed)
+        if suggestion:
+            line += f', did you mean {suggestion!r}?'
+        lines.append(line)
+    return '\n'.join(lines)
 
 
 def _check_type(value, expected, path):
@@ -72,7 +99,7 @@ def _validate_on_event_kinds(value, path):
     _err(path, f'expected None, str, or collection of strings, got {type(value).__name__!r}')
 
 
-def _validate_auth(auth, path='auth', strict=False):
+def _validate_auth(auth, path='auth', strict=False, _stacklevel=3, _errors=None):
     _check_type(auth, dict, path)
 
     auth_type = auth.get('type')
@@ -106,20 +133,35 @@ def _validate_auth(auth, path='auth', strict=False):
             _err(path, 'callback auth requires "handler" (callable)')
         _check_callable(auth['handler'], f'{path}.handler')
 
-    if strict and auth_type in _KNOWN_AUTH_KEYS and auth_type != 'callback':
-        unknown = set(auth) - _KNOWN_AUTH_KEYS[auth_type]
+    if auth_type in _KNOWN_AUTH_KEYS and auth_type != 'callback':
+        unknown = [k for k in auth if k not in _KNOWN_AUTH_KEYS[auth_type]]
         if unknown:
-            bad = sorted(unknown)[0]
-            _err(path, f'unknown {auth_type} auth key: {bad}')
+            msg = _format_unknown_keys_message(
+                unknown, where=path, allowed=_KNOWN_AUTH_KEYS[auth_type]
+            )
+            if strict:
+                if _errors is not None:
+                    _errors.append(f'schema[{path}]: {msg}')
+                else:
+                    _err(path, msg)
+            else:
+                warnings.warn(
+                    f'schema[{path}]: {msg}', SchemaValidationWarning, stacklevel=_stacklevel
+                )
 
 
-def _validate_retry(retry, path='retry', strict=False):
+def _validate_retry(retry, path='retry', strict=False, _stacklevel=3, _errors=None):
     _check_type(retry, dict, path)
-    if strict:
-        unknown = set(retry) - _KNOWN_RETRY_KEYS
-        if unknown:
-            bad = sorted(unknown)[0]
-            _err(path, f'unknown {path} key: {bad}')
+    unknown = [k for k in retry if k not in _KNOWN_RETRY_KEYS]
+    if unknown:
+        msg = _format_unknown_keys_message(unknown, where=path, allowed=_KNOWN_RETRY_KEYS)
+        if strict:
+            if _errors is not None:
+                _errors.append(f'schema[{path}]: {msg}')
+            else:
+                _err(path, msg)
+        else:
+            warnings.warn(f'schema[{path}]: {msg}', SchemaValidationWarning, stacklevel=_stacklevel)
 
     if 'max_attempts' in retry:
         _check_type(retry['max_attempts'], int, f'{path}.max_attempts')
@@ -171,17 +213,22 @@ def _validate_retry(retry, path='retry', strict=False):
             )
 
 
-def _validate_rate_limit(rl, path='rate_limit', strict=False):
+def _validate_rate_limit(rl, path='rate_limit', strict=False, _stacklevel=3, _errors=None):
     _check_type(rl, dict, path)
 
     if 'max_retry_after' in rl:
         _err(path, 'max_retry_after is not supported; use retry.max_retry_after instead')
 
-    if strict:
-        unknown = set(rl) - _KNOWN_RATE_LIMIT_KEYS
-        if unknown:
-            bad = sorted(unknown)[0]
-            _err(path, f'unknown {path} key: {bad}')
+    unknown = [k for k in rl if k not in _KNOWN_RATE_LIMIT_KEYS]
+    if unknown:
+        msg = _format_unknown_keys_message(unknown, where=path, allowed=_KNOWN_RATE_LIMIT_KEYS)
+        if strict:
+            if _errors is not None:
+                _errors.append(f'schema[{path}]: {msg}')
+            else:
+                _err(path, msg)
+        else:
+            warnings.warn(f'schema[{path}]: {msg}', SchemaValidationWarning, stacklevel=_stacklevel)
 
     if 'respect_retry_after' in rl:
         _check_type(rl['respect_retry_after'], bool, f'{path}.respect_retry_after')
@@ -255,7 +302,7 @@ def _validate_encoding(value, path):
         _err(path, 'must be a non-empty string')
 
 
-def _validate_pagination(pagination, path='pagination', strict=False):
+def _validate_pagination(pagination, path='pagination', strict=False, _stacklevel=3, _errors=None):
     # pagination can be explicitly set to None to disable it
     if pagination is None:
         return
@@ -280,11 +327,19 @@ def _validate_pagination(pagination, path='pagination', strict=False):
                     f'{path}.{moved_key} is not supported; use {moved_key} at endpoint level instead',
                 )
 
-    if strict and not is_helper:
-        unknown = set(pagination) - _KNOWN_PAGINATION_KEYS
+    if not is_helper:
+        unknown = [k for k in pagination if k not in _KNOWN_PAGINATION_KEYS]
         if unknown:
-            bad = sorted(unknown)[0]
-            _err(path, f'unknown {path} key: {bad}')
+            msg = _format_unknown_keys_message(unknown, where=path, allowed=_KNOWN_PAGINATION_KEYS)
+            if strict:
+                if _errors is not None:
+                    _errors.append(f'schema[{path}]: {msg}')
+                else:
+                    _err(path, msg)
+            else:
+                warnings.warn(
+                    f'schema[{path}]: {msg}', SchemaValidationWarning, stacklevel=_stacklevel
+                )
 
     # next_request is required — it is the only stop signal; omitting it means
     # pagination would loop forever with no way to terminate
@@ -304,7 +359,7 @@ def _validate_pagination(pagination, path='pagination', strict=False):
         _check_type(pagination['initial_params'], dict, f'{path}.initial_params')
 
 
-def _validate_endpoint(name, endpoint, path=None, strict=False):
+def _validate_endpoint(name, endpoint, path=None, strict=False, _stacklevel=3, _errors=None):
     path = path or f'endpoints.{name}'
     _check_type(endpoint, dict, path)
 
@@ -342,7 +397,13 @@ def _validate_endpoint(name, endpoint, path=None, strict=False):
 
     # pagination at endpoint level — merges over client-level defaults
     if 'pagination' in endpoint:
-        _validate_pagination(endpoint['pagination'], f'{path}.pagination', strict=strict)
+        _validate_pagination(
+            endpoint['pagination'],
+            f'{path}.pagination',
+            strict=strict,
+            _stacklevel=_stacklevel + 1,
+            _errors=_errors,
+        )
 
     optional_callables = (
         'on_response',
@@ -364,10 +425,22 @@ def _validate_endpoint(name, endpoint, path=None, strict=False):
         )
 
     if 'retry' in endpoint and endpoint['retry'] is not None:
-        _validate_retry(endpoint['retry'], f'{path}.retry', strict=strict)
+        _validate_retry(
+            endpoint['retry'],
+            f'{path}.retry',
+            strict=strict,
+            _stacklevel=_stacklevel + 1,
+            _errors=_errors,
+        )
 
     if 'rate_limit' in endpoint and endpoint['rate_limit'] is not None:
-        _validate_rate_limit(endpoint['rate_limit'], f'{path}.rate_limit', strict=strict)
+        _validate_rate_limit(
+            endpoint['rate_limit'],
+            f'{path}.rate_limit',
+            strict=strict,
+            _stacklevel=_stacklevel + 1,
+            _errors=_errors,
+        )
     if 'log_level' in endpoint:
         _check_one_of(endpoint['log_level'], _VALID_LOG_LEVELS, f'{path}.log_level')
 
@@ -534,15 +607,17 @@ _KNOWN_ENDPOINT_KEYS = {
 }
 
 
-def validate(schema, strict=False):
+def validate(schema, strict=True):
     """
     validates the top-level api client schema dict.
-    raises SchemaError with a descriptive message on the first problem found.
     returns the schema unchanged so it can be used inline:
         client = APIClient(validate(my_schema))
 
-    strict=True raises SchemaError on any unrecognised top-level or endpoint keys,
-    which catches typos like 'on_requets' that would otherwise be silently ignored.
+    strict=True  — unknown keys raise SchemaError (all issues collected, raised together).
+    strict=False — unknown keys emit SchemaValidationWarning instead of raising.
+
+    unknown-key issues are the only ones aggregated. type errors, missing required
+    fields, and other semantic checks still fail immediately on the first problem found.
     """
     _check_type(schema, dict, 'root')
 
@@ -550,18 +625,20 @@ def validate(schema, strict=False):
         _err('base_url', 'missing required key')
     _check_type(schema['base_url'], str, 'base_url')
 
+    _errors: list[str] = []
+
     if 'auth' in schema:
-        _validate_auth(schema['auth'], strict=strict)
+        _validate_auth(schema['auth'], strict=strict, _stacklevel=3, _errors=_errors)
 
     if 'retry' in schema:
-        _validate_retry(schema['retry'], strict=strict)
+        _validate_retry(schema['retry'], strict=strict, _stacklevel=3, _errors=_errors)
 
     if 'rate_limit' in schema:
-        _validate_rate_limit(schema['rate_limit'], strict=strict)
+        _validate_rate_limit(schema['rate_limit'], strict=strict, _stacklevel=3, _errors=_errors)
 
     # client-level pagination defaults (inherited by endpoints)
     if 'pagination' in schema:
-        _validate_pagination(schema['pagination'], strict=strict)
+        _validate_pagination(schema['pagination'], strict=strict, _stacklevel=3, _errors=_errors)
 
     if 'log_level' in schema:
         _check_one_of(schema['log_level'], _VALID_LOG_LEVELS, 'log_level')
@@ -604,11 +681,13 @@ def validate(schema, strict=False):
         sc = schema['session_config']
         _check_type(sc, dict, 'session_config')
         _VALID_SESSION_KEYS = {'verify', 'cert', 'proxies', 'max_redirects'}
-        unknown = set(sc) - _VALID_SESSION_KEYS
+        unknown = [k for k in sc if k not in _VALID_SESSION_KEYS]
         if unknown:
             _err(
                 'session_config',
-                f'unknown key(s): {sorted(unknown)} — supported: {sorted(_VALID_SESSION_KEYS)}',
+                _format_unknown_keys_message(
+                    unknown, where='session_config', allowed=_VALID_SESSION_KEYS
+                ),
             )
         if 'verify' in sc and not isinstance(sc['verify'], (bool, str)):
             _err('session_config.verify', 'must be a bool or a path string to a CA bundle')
@@ -647,22 +726,30 @@ def validate(schema, strict=False):
         _err('endpoints', 'must define at least one endpoint')
 
     for name, endpoint in schema['endpoints'].items():
-        _validate_endpoint(name, endpoint, strict=strict)
+        _validate_endpoint(name, endpoint, strict=strict, _stacklevel=3, _errors=_errors)
 
-    if strict:
-        unknown_root = set(schema) - _KNOWN_SCHEMA_KEYS
-        if unknown_root:
-            _err(
-                'root',
-                f'unrecognised key(s): {sorted(unknown_root)} — use strict=False to suppress, or check for typos',
+    unknown_root = [k for k in schema if k not in _KNOWN_SCHEMA_KEYS]
+    if unknown_root:
+        msg = _format_unknown_keys_message(unknown_root, where='root', allowed=_KNOWN_SCHEMA_KEYS)
+        if strict:
+            _errors.append(f'schema[root]: {msg}')
+        else:
+            warnings.warn(f'schema[root]: {msg}', SchemaValidationWarning, stacklevel=2)
+
+    for name, endpoint in schema['endpoints'].items():
+        unknown_ep = [k for k in endpoint if k not in _KNOWN_ENDPOINT_KEYS]
+        if unknown_ep:
+            ep_path = f'endpoints.{name}'
+            msg = _format_unknown_keys_message(
+                unknown_ep, where=ep_path, allowed=_KNOWN_ENDPOINT_KEYS
             )
-        for name, endpoint in schema['endpoints'].items():
-            unknown_ep = set(endpoint) - _KNOWN_ENDPOINT_KEYS
-            if unknown_ep:
-                _err(
-                    f'endpoints.{name}',
-                    f'unrecognised key(s): {sorted(unknown_ep)} — use strict=False to suppress, or check for typos',
-                )
+            if strict:
+                _errors.append(f'schema[{ep_path}]: {msg}')
+            else:
+                warnings.warn(f'schema[{ep_path}]: {msg}', SchemaValidationWarning, stacklevel=2)
+
+    if _errors:
+        raise SchemaError('\n'.join(_errors))
 
     return schema
 

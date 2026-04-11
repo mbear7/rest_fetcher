@@ -46,6 +46,7 @@ from rest_fetcher import (
 from rest_fetcher.auth import OAuth2PasswordAuth, build_auth_handler
 from rest_fetcher.pagination import CycleRunner
 from rest_fetcher.retry import RetryHandler
+from rest_fetcher.exceptions import SchemaValidationWarning
 from rest_fetcher.schema import merge_dicts, resolve_endpoint, validate
 from rest_fetcher.types import StopSignal, StreamSummary
 
@@ -187,13 +188,242 @@ class TestEndpointInheritedValidation(unittest.TestCase):
             strict=True,
         )
 
-    def test_non_strict_mode_ignores_unknown_keys(self):
-        # default behaviour — unknown keys silently pass
-        validate(
+    def test_non_strict_mode_warns_on_unknown_keys(self):
+        import warnings as _warnings
+
+        with _warnings.catch_warnings(record=True) as caught:
+            _warnings.simplefilter('always')
+            validate(
+                {
+                    'base_url': 'https://api.example.com/v1',
+                    'unknown_future_key': True,
+                    'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
+                },
+                strict=False,
+            )
+        schema_warns = [w for w in caught if issubclass(w.category, SchemaValidationWarning)]
+        self.assertEqual(len(schema_warns), 1)
+        self.assertIn('unknown_future_key', str(schema_warns[0].message))
+
+    def test_non_strict_mode_warning_points_at_caller(self):
+        import warnings as _warnings
+
+        with _warnings.catch_warnings(record=True) as caught:
+            _warnings.simplefilter('always')
+            validate(  # this is the line the warning should point at
+                {
+                    'base_url': 'https://api.example.com/v1',
+                    'typo_key': True,
+                    'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
+                },
+                strict=False,
+            )
+        schema_warns = [w for w in caught if issubclass(w.category, SchemaValidationWarning)]
+        self.assertEqual(len(schema_warns), 1)
+        self.assertNotIn('schema.py', schema_warns[0].filename)
+
+    def test_non_strict_mode_warns_on_unknown_endpoint_keys(self):
+        import warnings as _warnings
+
+        with _warnings.catch_warnings(record=True) as caught:
+            _warnings.simplefilter('always')
+            validate(
+                {
+                    'base_url': 'https://api.example.com/v1',
+                    'endpoints': {
+                        'ep': {'method': 'GET', 'path': '/x', 'on_respnse': lambda p, s: p}
+                    },
+                },
+                strict=False,
+            )
+        schema_warns = [w for w in caught if issubclass(w.category, SchemaValidationWarning)]
+        self.assertEqual(len(schema_warns), 1)
+        self.assertIn('on_respnse', str(schema_warns[0].message))
+        self.assertIn("Did you mean 'on_response'", str(schema_warns[0].message))
+
+    def test_non_strict_mode_warns_on_unknown_retry_keys(self):
+        import warnings as _warnings
+
+        with _warnings.catch_warnings(record=True) as caught:
+            _warnings.simplefilter('always')
+            validate(
+                {
+                    'base_url': 'https://api.example.com/v1',
+                    'retry': {'max_attempts': 3, 'max_retyes': 5},
+                    'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
+                },
+                strict=False,
+            )
+        schema_warns = [w for w in caught if issubclass(w.category, SchemaValidationWarning)]
+        self.assertEqual(len(schema_warns), 1)
+        self.assertIn('max_retyes', str(schema_warns[0].message))
+
+    def test_non_strict_mode_warning_includes_allowed_keys(self):
+        import warnings as _warnings
+
+        with _warnings.catch_warnings(record=True) as caught:
+            _warnings.simplefilter('always')
+            validate(
+                {
+                    'base_url': 'https://api.example.com/v1',
+                    'retrry': {},
+                    'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
+                },
+                strict=False,
+            )
+        schema_warns = [w for w in caught if issubclass(w.category, SchemaValidationWarning)]
+        self.assertEqual(len(schema_warns), 1)
+        self.assertIn('Allowed keys:', str(schema_warns[0].message))
+
+    def test_session_config_still_raises_in_non_strict_mode(self):
+        with self.assertRaises(SchemaError):
+            validate(
+                {
+                    'base_url': 'https://api.example.com/v1',
+                    'session_config': {'unknown_key': True},
+                    'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
+                }
+            )
+
+    # --- aggregation ---
+
+    def test_strict_collects_errors_across_boundaries(self):
+        # root typo + endpoint typo — both reported in one exception
+        with self.assertRaises(SchemaError) as ctx:
+            validate(
+                {
+                    'base_url': 'https://api.example.com/v1',
+                    'retrry': {},
+                    'endpoints': {
+                        'ep': {'method': 'GET', 'path': '/x', 'on_respnse': lambda p, s: p}
+                    },
+                },
+                strict=True,
+            )
+        msg = str(ctx.exception)
+        self.assertIn('retrry', msg)
+        self.assertIn('on_respnse', msg)
+
+    def test_strict_collects_errors_across_sub_validators(self):
+        # typo in client-level retry + typo in endpoint — both reported
+        with self.assertRaises(SchemaError) as ctx:
+            validate(
+                {
+                    'base_url': 'https://api.example.com/v1',
+                    'retry': {'max_attempts': 3, 'max_retyes': 5},
+                    'endpoints': {
+                        'ep': {'method': 'GET', 'path': '/x', 'on_respnse': lambda p, s: p}
+                    },
+                },
+                strict=True,
+            )
+        msg = str(ctx.exception)
+        self.assertIn('max_retyes', msg)
+        self.assertIn('on_respnse', msg)
+
+    def test_strict_error_encounter_order(self):
+        # retry typo (sub-validator, fires first) before root typo (fires after endpoint loop)
+        with self.assertRaises(SchemaError) as ctx:
+            validate(
+                {
+                    'base_url': 'https://api.example.com/v1',
+                    'retry': {'max_attempts': 3, 'bad_retry_key': 1},
+                    'retrry': {},
+                    'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
+                },
+                strict=True,
+            )
+        msg = str(ctx.exception)
+        self.assertLess(msg.index('bad_retry_key'), msg.index('retrry'))
+
+    # --- stacklevel coverage for nested warning paths ---
+
+    def _assert_warning_points_at_caller(self, schema):
+        import warnings as _warnings
+
+        with _warnings.catch_warnings(record=True) as caught:
+            _warnings.simplefilter('always')
+            validate(schema, strict=False)
+        schema_warns = [w for w in caught if issubclass(w.category, SchemaValidationWarning)]
+        self.assertGreater(len(schema_warns), 0)
+        for w in schema_warns:
+            self.assertNotIn('schema.py', w.filename)
+
+    def test_stacklevel_auth_warning_points_at_caller(self):
+        self._assert_warning_points_at_caller(
             {
-                'base_url': 'https://api.example.com/v1',
-                'unknown_future_key': True,
+                'base_url': 'http://x.com',
+                'auth': {'type': 'bearer', 'token': 'x', 'extra_key': 'y'},
                 'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
+            }
+        )
+
+    def test_stacklevel_client_retry_warning_points_at_caller(self):
+        self._assert_warning_points_at_caller(
+            {
+                'base_url': 'http://x.com',
+                'retry': {'max_attempts': 3, 'bad_key': 1},
+                'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
+            }
+        )
+
+    def test_stacklevel_client_rate_limit_warning_points_at_caller(self):
+        self._assert_warning_points_at_caller(
+            {
+                'base_url': 'http://x.com',
+                'rate_limit': {'min_delay': 1, 'bad_key': 1},
+                'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
+            }
+        )
+
+    def test_stacklevel_client_pagination_warning_points_at_caller(self):
+        self._assert_warning_points_at_caller(
+            {
+                'base_url': 'http://x.com',
+                'pagination': {'next_request': lambda p, s: None, 'bad_key': 1},
+                'endpoints': {'ep': {'method': 'GET', 'path': '/x'}},
+            }
+        )
+
+    def test_stacklevel_endpoint_retry_warning_points_at_caller(self):
+        self._assert_warning_points_at_caller(
+            {
+                'base_url': 'http://x.com',
+                'endpoints': {
+                    'ep': {
+                        'method': 'GET',
+                        'path': '/x',
+                        'retry': {'max_attempts': 3, 'bad_key': 1},
+                    }
+                },
+            }
+        )
+
+    def test_stacklevel_endpoint_rate_limit_warning_points_at_caller(self):
+        self._assert_warning_points_at_caller(
+            {
+                'base_url': 'http://x.com',
+                'endpoints': {
+                    'ep': {
+                        'method': 'GET',
+                        'path': '/x',
+                        'rate_limit': {'min_delay': 1, 'bad_key': 1},
+                    }
+                },
+            }
+        )
+
+    def test_stacklevel_endpoint_pagination_warning_points_at_caller(self):
+        self._assert_warning_points_at_caller(
+            {
+                'base_url': 'http://x.com',
+                'endpoints': {
+                    'ep': {
+                        'method': 'GET',
+                        'path': '/x',
+                        'pagination': {'next_request': lambda p, s: None, 'bad_key': 1},
+                    }
+                },
             }
         )
 

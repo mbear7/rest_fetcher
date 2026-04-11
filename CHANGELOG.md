@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.7
+
+- **Strict schema validation by default:** `validate()` now defaults to `strict=True`. Unknown keys raise `SchemaError` with all issues reported together. Pass `strict=False` to emit `SchemaValidationWarning` instead.
+
 ## 0.5.6
 
 - **Client metrics sessions:** optional `metrics` client schema key accepts `True`, `False` / `None`, or an explicit `MetricsSession` instance. `client.metrics` exposes a thread-safe session accumulator with `summary()` and atomic `reset()`.

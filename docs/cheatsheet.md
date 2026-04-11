@@ -213,7 +213,11 @@ return {'params': {'page': 2}, 'params_mode': 'replace'} # replace: prior params
 return {'params_mode': 'replace'}                         # replace with no params: all cleared
 ```
 
-### 3.7 Notes and gotchas
+### 3.7 Validation behavior
+
+`validate()` defaults to `strict=True`. Unknown keys raise `SchemaError` with all issues collected and reported together. Each message includes the full list of allowed keys and a typo suggestion when the key is close enough to a known one. Pass `strict=False` to emit `SchemaValidationWarning` instead — useful during development when adding experimental keys. `SchemaValidationWarning` can be filtered with Python's standard `warnings` module. Type errors, missing required fields, and other semantic checks always fail immediately regardless of `strict`.
+
+### 3.8 Notes and gotchas
 
 - `total_path` and `total_pages_path` use a built-in dot-path resolver. Stop priority: (1) resolves to numeric → compare and stop when offset ≥ total; (2) resolves but non-numeric → stop immediately with warning (no fallback); (3) not configured → short-page heuristic (`len(items) < limit`). Inject `path_resolver` for advanced traversal: `offset_pagination(total_path='pages.0.count', path_resolver=my_resolver)`. Resolver signature: `(resp, path) → Any | None`.
 - `next_request` returning `None` is the only stop signal — no separate `has_next` needed.
@@ -372,9 +376,25 @@ Uses a named response header whose value is already the next URL. Header lookup 
 
 ---
 
-## 7. SchemaBuilder (Optional Fluent API)
+## 7. SchemaBuilder and IDE-friendly authoring
 
 `SchemaBuilder` produces a plain dict identical to hand-written schemas. It is a developer-experience layer — zero runtime difference. All TypedDicts in `rest_fetcher.types` are available for IDE autocompletion and mypy.
+
+For rich key suggestions in VS Code / Pylance, choose one of:
+
+- **`SchemaBuilder`** — fluent API with typed method signatures.
+- **TypedDict annotation** — annotate a raw dict literal with `ClientSchema` for top-level config and `EndpointSchema` for individual endpoints. Untyped inline dicts usually won't provide key suggestions.
+
+```python
+from rest_fetcher.types import ClientSchema, EndpointSchema
+
+schema: ClientSchema = {
+    'base_url': 'https://api.example.com/v1',
+    'endpoints': {
+        'users': EndpointSchema(method='GET', path='/users'),
+    },
+}
+```
 
 ```python
 from rest_fetcher import SchemaBuilder
@@ -645,7 +665,7 @@ print(f'pages={summary.pages}, requests={summary.requests}')
 | Exception | When raised |
 |---|---|
 | `RestFetcherError` | Base class for all library exceptions. |
-| `SchemaError` | Invalid or missing keys in schema dict. Pass `validate(schema, strict=True)` to also raise on unrecognised keys (catches typos like `on_requets`). |
+| `SchemaError` | Invalid or missing keys in schema dict. Unrecognised keys also raise by default (catches typos like `on_requets`). Pass `validate(schema, strict=False)` to warn instead of raising. |
 | `AuthError` | Auth failure or invalid auth config. |
 | `RequestError` | HTTP request failed. Has `.status_code`, `.response`, `.cause` (network errors), `.endpoint`, `.method`, `.url` (post-auth — always set for both network and HTTP errors). |
 | `RateLimitError` | Reactive rate limit: `Retry-After` exceeds `max_retry_after`. Has `.retry_after`. |
