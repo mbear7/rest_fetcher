@@ -47,7 +47,7 @@ _Python ETL library for fetching data from REST APIs_
 |---|---|
 | `base_url` | **Required.** Base URL for all endpoints, e.g. `"https://api.example.com/v1"` |
 | `auth` | Auth config dict. Keys: `type` (`bearer`\|`basic`\|`oauth2`\|`oauth2_password`\|`callback`) + type-specific keys. See §3.3. |
-| `retry` | Retry config dict. Keys: `max_attempts` (default 3), `backoff` (`exponential`\|`linear`\|callable, default `exponential`), `on_codes` (default `[429,500,502,503,504]`), `base_delay` (default 1.0s), `max_delay` (default 120s), `jitter` (`false`\|`true`/`"full"`\|`"equal"`), `max_retry_after` (float, optional — raise `RateLimitError` instead of waiting when `Retry-After` exceeds this value). Jitter applies only to computed backoff, not `Retry-After` or reactive `min_delay`. |
+| `retry` | Retry config dict. Keys: `max_attempts` (default 3), `backoff` (`exponential`\|`linear`\|callable, default `exponential`), `on_codes` (default `[429,500,502,503,504]`), `base_delay` (default 1.0s), `max_delay` (default 120s), `jitter` (`false`\|`true`/`"full"`\|`"equal"`), `max_retry_after` (float, optional — raise `RateLimitError` instead of waiting when `Retry-After` exceeds this value), `reactive_wait_on_terminal` (bool, default `False` — honour `Retry-After` / `min_delay` even on non-retried terminal HTTP errors). Jitter applies only to computed backoff, not `Retry-After` or reactive `min_delay`. |
 | `rate_limit` | Rate limit config dict. Controls both proactive token-bucket limiting and reactive Retry-After behaviour. See §3.1a. |
 | `on_event` | `Callable(PaginationEvent) → None`. Lifecycle event hook for telemetry. Overridable per endpoint. Exceptions swallowed; run continues. |
 | `on_event_kinds` | Filter which event kinds reach `on_event`. Accepts: `None` (all events), `'all'` (alias for `None`), single kind string, set/list/tuple of kind strings, or empty collection (silences all events). Unknown kinds raise `SchemaError`. Inherits from client to endpoint. |
@@ -247,7 +247,7 @@ return {'params_mode': 'replace'}                         # replace with no para
 | `canonical_parser` | `(content_bytes: bytes, context: dict) → any` | Replaces built-in `response_format` parsing. Return becomes `parsed_body`. See §3.1b for `context` keys. |
 | `auth handler` (callback type) | `(request_kwargs: dict, config: Mapping) → dict` | Returns modified request kwargs with auth injected. `config` is the read-only auth config view. |
 | `token_callback` (bearer auth) | `(config: Mapping) → str` | Returns bearer token string. Use for dynamic/rotated tokens. |
-| `mock` (callable form) | `(request_kwargs: dict) → dict` | Returns fake response dict. List form: one dict per page, no callable needed. |
+| `mock` (callable form) | `(request_kwargs: dict, *, run_state) → dict` | Returns fake response dict. `run_state` is passed as a keyword argument — declare it explicitly (`def mock(req, *, run_state): ...`) or accept it via `**kwargs`. List form: one dict per page, no callable needed. |
 
 ### 4a. Lifecycle event kinds (`on_event`)
 
@@ -468,7 +468,6 @@ client = APIClient({
             {'json': {'params': {'Page': {'Offset': parsed_body['LimitedBy']}}}}
             if parsed_body.get('LimitedBy') else None
         ),
-        'on_response': lambda resp, state: resp.get('result'),
         'delay': 0.1,
     },
     'endpoints': {
@@ -478,9 +477,8 @@ client = APIClient({
                 'SelectionCriteria': {'Statuses': ['ACCEPTED']},
                 'FieldNames': ['Id', 'Name'], 'Page': {'Limit': 10000}
             }},
-            'pagination': {  # endpoint-level pagination MUST include next_request
-                'on_response': lambda resp, state: resp.get('Campaigns'),
-            },
+            # on_response is an endpoint-level lifecycle hook, not a pagination key
+            'on_response': lambda resp, state: resp.get('Campaigns'),
         },
         'reports': {'method': 'POST', 'path': '/reports', 'pagination': None},
     }

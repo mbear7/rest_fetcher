@@ -580,9 +580,12 @@ class TestSchemaValidation(unittest.TestCase):
         with self.assertRaises(SchemaError):
             validate(simple_schema(playback={'path': 'x.json', 'mode': 'rewind'}))
 
-    def test_playback_string_shorthand_raises(self):
-        with self.assertRaises(SchemaError):
-            validate(simple_schema(playback='x.json'))
+    def test_playback_string_shorthand_normalizes(self):
+        schema = simple_schema(playback='x.json')
+        validate(schema)
+        # string shorthand is normalized in-place to {'path': ..., 'mode': 'auto'}
+        pb = schema['endpoints']['test']['playback']
+        self.assertEqual(pb, {'path': 'x.json', 'mode': 'auto'})
 
     def test_playback_mode_none_valid_without_path(self):
         validate(simple_schema(playback={'mode': 'none'}))

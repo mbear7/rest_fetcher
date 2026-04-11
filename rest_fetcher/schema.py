@@ -403,8 +403,11 @@ def _validate_endpoint(name, endpoint, path=None, strict=False):
 
     if 'playback' in endpoint:
         pb = endpoint['playback']
+        if isinstance(pb, str):
+            pb = {'path': pb, 'mode': 'auto'}
+            endpoint['playback'] = pb
         if not isinstance(pb, dict):
-            _err(f'{path}.playback', 'must be a dict with path and optional mode')
+            _err(f'{path}.playback', 'must be a path string or a dict with path and optional mode')
         mode = pb.get('mode', 'auto')
         if mode not in ('auto', 'save', 'load', 'none'):
             _err(f'{path}.playback.mode', 'must be one of auto|save|load|none')
@@ -444,7 +447,6 @@ _KNOWN_SCHEMA_KEYS = {
     'scrub_headers',
     'scrub_query_params',
     'endpoints',
-    'debug',
     'metrics',
 }
 

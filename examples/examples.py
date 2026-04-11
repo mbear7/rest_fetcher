@@ -1102,7 +1102,7 @@ def log_progress_every_10_requests(page_data, state):
     requests_so_far = state.get('requests_so_far', 0)
     if requests_so_far and requests_so_far % 10 == 0:
         print(f'progress: {requests_so_far} requests completed')
-    return page_data
+    # on_page return value is ignored — omit or return None
 
 
 client = APIClient(
@@ -1332,7 +1332,8 @@ client = APIClient(
 #   load  — always replay; raise PlaybackError if file is missing
 #   none  — disable record/replay entirely (treat as if playback were omitted)
 #
-# string shorthand uses 'auto' mode. dict form sets mode explicitly.
+# string shorthand: 'path/to/file.json' is equivalent to {'path': '...', 'mode': 'auto'}.
+# dict form sets mode explicitly.
 
 client = APIClient(
     {
@@ -1472,14 +1473,16 @@ schema = (
     .retry(max_attempts=3, backoff='exponential')
     .rate_limit(min_delay=0.2, respect_retry_after=True)  # 200 ms floor between requests
     .pagination(
-        {  # inherited by all endpoints
+        {  # inherited by all endpoints — mechanics only (next_request, delay)
             'next_request': shared_next_request,
-            'on_response': lambda resp, state: resp.get('items', []),
             'delay': 0.1,
         }
     )
-    .endpoint('users', method='GET', path='/users')
-    .endpoint('events', method='GET', path='/events')
+    # on_response is an endpoint-level lifecycle hook — not a pagination key
+    .endpoint('users', method='GET', path='/users',
+              on_response=lambda resp, state: resp.get('items', []))
+    .endpoint('events', method='GET', path='/events',
+              on_response=lambda resp, state: resp.get('items', []))
     .endpoint(
         'webhook', method='POST', path='/webhooks', pagination=None
     )  # disable for this endpoint
@@ -1545,7 +1548,7 @@ def stop_after_three_errors(exc, state):
         print(f'stopping after {errors_so_far} errors with {pages_so_far} pages already collected')
         return 'stop'
 
-    return None
+    return 'skip'  # on_error must return 'raise', 'skip', or 'stop' — None raises CallbackError
 
 
 client = APIClient(
