@@ -1479,10 +1479,15 @@ schema = (
         }
     )
     # on_response is an endpoint-level lifecycle hook — not a pagination key
-    .endpoint('users', method='GET', path='/users',
-              on_response=lambda resp, state: resp.get('items', []))
-    .endpoint('events', method='GET', path='/events',
-              on_response=lambda resp, state: resp.get('items', []))
+    .endpoint(
+        'users', method='GET', path='/users', on_response=lambda resp, state: resp.get('items', [])
+    )
+    .endpoint(
+        'events',
+        method='GET',
+        path='/events',
+        on_response=lambda resp, state: resp.get('items', []),
+    )
     .endpoint(
         'webhook', method='POST', path='/webhooks', pagination=None
     )  # disable for this endpoint
