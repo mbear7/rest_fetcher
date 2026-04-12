@@ -1067,6 +1067,48 @@ class _FetchJob:
             ctx=ctx,
         )
 
+    def _dispatch_on_error_action(
+        self,
+        action: str | None,
+        exc: RequestError,
+        *,
+        run_state: _RunState | None,
+        request_kwargs: dict[str, Any],
+        skip_headers: dict[str, Any],
+    ) -> tuple[Literal['skip', 'stop', 'raise'], _RequestOutcome | StopSignal | None]:
+        """Interpret the return value of an on_error callback.
+
+        Handles state bookkeeping, outcome/signal construction, and CallbackError for
+        invalid returns. Does not raise on 'raise' action — callers use their own
+        appropriate raise form (``raise exc`` vs bare ``raise``) to preserve traceback context.
+        """
+        if action == 'skip':
+            if run_state is not None:
+                run_state._last_error = exc
+                run_state._last_error_action = 'skip'
+            return 'skip', _RequestOutcome(
+                parsed_body={}, parsed={}, headers=skip_headers, request_kwargs=request_kwargs
+            )
+        elif action == 'raise':
+            return 'raise', None
+        elif action == 'stop':
+            if run_state is not None:
+                run_state._last_error = exc
+                run_state._last_error_action = 'stop'
+            return 'stop', StopSignal(kind='error_stop')
+        elif action is None:
+            raise CallbackError(
+                'on_error returned None — must return "raise", "skip", or "stop"',
+                callback_name='on_error',
+                cause=None,
+            )
+        else:
+            raise CallbackError(
+                f'on_error must return "raise", "skip", or "stop", got {action!r}',
+                callback_name='on_error',
+                cause=None,
+            )
+
     def _handle_error_response(
         self, response, method=None, url=None, request_kwargs=None, run_state=None
     ):
@@ -1116,41 +1158,23 @@ class _FetchJob:
             error_headers['_status_code'] = response.status_code
             state_for_error['_response_headers'] = error_headers
             action = self._on_error(exc, StateView(state_for_error))
-            if action == 'skip':
+            skip_headers = dict(response.headers)
+            skip_headers['_status_code'] = response.status_code
+            disposition, result = self._dispatch_on_error_action(
+                action,
+                exc,
+                run_state=run_state,
+                request_kwargs=request_kwargs,
+                skip_headers=skip_headers,
+            )
+            if disposition == 'raise':
+                raise exc
+            if disposition == 'skip':
                 self._log(
                     logging.WARNING, 'on_error returned skip for status %d', response.status_code
                 )
-                if run_state is not None:
-                    run_state._last_error = exc
-                    run_state._last_error_action = 'skip'
-                skip_headers = dict(response.headers)
-                skip_headers['_status_code'] = response.status_code
-                return _RequestOutcome(
-                    parsed_body={}, parsed={}, headers=skip_headers, request_kwargs=request_kwargs
-                )
-            elif action == 'raise':
-                # This helper constructs RequestError locally and is not running
-                # under an active `except` for that object. Use `raise exc` here.
-                # Bare `raise` would try to re-raise a currently handled exception
-                # and fail with `RuntimeError: No active exception to re-raise`.
-                raise exc
-            elif action == 'stop':
-                if run_state is not None:
-                    run_state._last_error = exc
-                    run_state._last_error_action = 'stop'
-                return StopSignal(kind='error_stop')
-            elif action is None:
-                raise CallbackError(
-                    'on_error returned None — must return "raise", "skip", or "stop"',
-                    callback_name='on_error',
-                    cause=None,
-                )
-            else:
-                raise CallbackError(
-                    f'on_error must return "raise", "skip", or "stop", got {action!r}',
-                    callback_name='on_error',
-                    cause=None,
-                )
+            assert result is not None
+            return result
         raise exc
 
     def _execute_mock(
@@ -1305,34 +1329,21 @@ class _FetchJob:
         )
         if self._on_error:
             action = self._on_error(exc, StateView(run_state.page_state))
-            if action == 'skip':
-                run_state._last_error = exc
-                run_state._last_error_action = 'skip'
-                return _RequestOutcome(
-                    parsed_body={}, parsed={}, headers={}, request_kwargs=request_kwargs
-                )
-            elif action == 'raise':
+            disposition, result = self._dispatch_on_error_action(
+                action,
+                exc,
+                run_state=run_state,
+                request_kwargs=request_kwargs,
+                skip_headers={},
+            )
+            if disposition == 'raise':
                 # This helper runs inside the active `except RequestError` path in
                 # `_run_request_cycle`. Bare `raise` preserves the original
                 # traceback from the failing request path; `raise exc` would rebase
                 # the visible raise site onto this helper and lose that context.
                 raise
-            elif action == 'stop':
-                run_state._last_error = exc
-                run_state._last_error_action = 'stop'
-                return StopSignal(kind='error_stop')
-            elif action is None:
-                raise CallbackError(
-                    'on_error returned None — must return "raise", "skip", or "stop"',
-                    callback_name='on_error',
-                    cause=None,
-                )
-            else:
-                raise CallbackError(
-                    f'on_error must return "raise", "skip", or "stop", got {action!r}',
-                    callback_name='on_error',
-                    cause=None,
-                )
+            assert result is not None
+            return result
         raise
 
     def _finish_request_cycle(
@@ -1521,7 +1532,7 @@ class _FetchJob:
         if self._playback.should_save and run_state.playback_pages:
             self._playback.save(run_state.playback_pages)
 
-    def _run(self, ctx=None, *, mode='stream', original_on_complete=None):
+    def _run(self, ctx=None, *, mode='stream', summary_sink=None):
         "internal executor — yields according to fetch/stream mode"
         run_state = _RunState(endpoint_name=self._endpoint_name, emit_event=self._emit_event)
         # terminal_summary is the canonical per-run summary object. It may be
@@ -1656,21 +1667,20 @@ class _FetchJob:
                     except BaseException as exc:
                         post_run_exception = exc
                     else:
+                        if summary_sink is not None:
+                            summary_sink(terminal_summary)
                         failed = False
                 else:
                     failed = False
 
             self._record_metrics_summary(terminal_summary, failed=failed)
-            runner._on_complete = original_on_complete
             if post_run_exception is not None:
                 raise post_run_exception
 
-    def _generate(
-        self, max_pages=None, max_requests=None, time_limit=None, *, original_on_complete=None
-    ):
+    def _generate(self, max_pages=None, max_requests=None, time_limit=None, *, summary_sink=None):
         "internal generator — yields one page at a time"
         ctx = OperationContext(max_pages, max_requests, time_limit)
-        yield from self._run(ctx, mode='stream', original_on_complete=original_on_complete)
+        yield from self._run(ctx, mode='stream', summary_sink=summary_sink)
 
     def _collect(self, max_pages=None, max_requests=None, time_limit=None):
         "internal collector — returns all pages, unwraps single-page results"
@@ -1846,6 +1856,30 @@ class APIClient:
             max_pages=max_pages, max_requests=max_requests, time_limit=time_limit
         )
 
+    def fetch_pages(self, endpoint_name: str, **call_params: Any) -> list[StreamItem]:
+        """Materialize stream() into a list — always returns a list of yielded page items.
+
+        fetch_pages() is equivalent to ``list(client.stream(endpoint_name, **call_params))``.
+        Unlike fetch(), the result is always a list regardless of how many pages were returned.
+        fetch() unwraps single-page results to the bare page value; fetch_pages() never does.
+
+        on_complete follows stream semantics here: it fires at normal completion with
+        ``(StreamSummary, state)`` and its return value is ignored. There is no
+        data-transformation via on_complete — use fetch() if you need that behavior.
+
+        optional safety caps:
+            max_pages, max_requests — stop cleanly and preserve collected pages.
+            time_limit — remains destructive and raises DeadlineExceeded.
+        """
+        max_pages = call_params.pop('max_pages', None)
+        max_requests = call_params.pop('max_requests', None)
+        time_limit = call_params.pop('time_limit', None)
+        return list(
+            self._make_job(endpoint_name, call_params)._generate(
+                max_pages=max_pages, max_requests=max_requests, time_limit=time_limit
+            )
+        )
+
     def stream(self, endpoint_name: str, **call_params: Any) -> Iterator[StreamItem]:
         """
         returns a generator that yields parsed/processed page values incrementally.
@@ -1887,22 +1921,15 @@ class APIClient:
 
         job = self._make_job(endpoint_name, call_params)
         summary_box: dict[str, StreamSummary] = {}
-        original_on_complete = job._runner._on_complete
 
-        def capture_complete(summary: StreamSummary, state: dict[str, Any]) -> Any:
-            if original_on_complete is not None:
-                result = original_on_complete(summary, state)
-                summary_box['summary'] = summary
-                return result
+        def summary_sink(summary: StreamSummary) -> None:
             summary_box['summary'] = summary
-            return None
 
-        job._runner._on_complete = capture_complete
         iterator = job._generate(
             max_pages=max_pages,
             max_requests=max_requests,
             time_limit=time_limit,
-            original_on_complete=original_on_complete,
+            summary_sink=summary_sink,
         )
         return _StreamRunImpl(iterator, summary_box)
 

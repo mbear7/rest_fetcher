@@ -71,6 +71,8 @@ covers:
   52. shared MetricsSession across multiple clients
   53. JWT auth recipe — Airflow-style token acquisition via callback auth
   54. total_entries-aware pagination — avoids extra empty-page request
+  55. fetch_pages() — always-a-list alternative to fetch()
+  56. PaginationEvent.to_dict() — JSON-serializable event for ETL audit logging
 """
 
 from rest_fetcher import (
@@ -2594,3 +2596,98 @@ def airflow_offset_pagination(data_path: str, limit: int = 100):
 #
 # all_dags = client.fetch('dags')
 # # stops exactly at total_entries — no extra empty-page request
+
+
+# example 55: fetch_pages() — always-a-list alternative to fetch()
+#
+# fetch() returns the bare page value for single-page endpoints and a list for
+# paginated ones. This means the return type changes depending on how many pages
+# the API returns — which can surprise downstream code when a small dataset fits
+# on one page.
+#
+# fetch_pages() is list(stream(...)) materialized. It always returns a list
+# regardless of page count, so the shape is predictable no matter the data volume.
+#
+# on_complete in fetch_pages() follows stream semantics: it fires with
+# (StreamSummary, state) at normal completion and its return value is ignored.
+# Use fetch() if you need on_complete to transform the returned data.
+
+client = APIClient(
+    {  # noqa: F821
+        'base_url': 'https://api.example.com/v1',
+        'auth': {'type': 'bearer', 'token': 'my-token'},
+        'endpoints': {
+            'users': {
+                'method': 'GET',
+                'path': '/users',
+                'pagination': offset_pagination(limit=100, data_path='items', total_path='total'),  # noqa: F821
+            }
+        },
+    }
+)
+
+# fetch() — shape varies: dict for one page, list[dict] for many
+result = client.fetch('users')
+
+# fetch_pages() — always a list, even when the API returns a single page
+pages = client.fetch_pages('users')
+
+# same safety caps as fetch() and stream()
+pages = client.fetch_pages('users', max_pages=5)
+pages = client.fetch_pages('users', params={'active': True}, max_requests=20)
+
+# works the same for non-paginated single-request endpoints
+# fetch() returns the dict directly; fetch_pages() wraps it in a list
+single = client.fetch_pages('users')  # [{'items': [...], 'total': 42}]
+
+
+# example 56: PaginationEvent.to_dict() — JSON-serializable event for ETL audit logging
+#
+# PaginationEvent.to_dict() serializes all event fields except mono (a process-local
+# monotonic timestamp with no meaning outside the current run). The key set is stable
+# across all event kinds — None fields are included so consumers can rely on a
+# consistent structure without guarding for missing keys.
+#
+# The primary use case is ETL audit logging: write one JSON line per event to a file,
+# structured log, or warehouse staging table, then query by kind/endpoint/ts downstream.
+
+import json  # noqa: E402
+import logging  # noqa: E402
+
+audit_logger = logging.getLogger('etl.api_audit')
+
+
+def on_event(ev):
+    audit_logger.info(json.dumps(ev.to_dict()))
+
+
+client = APIClient(
+    {  # noqa: F821
+        'base_url': 'https://api.example.com/v1',
+        'on_event': on_event,
+        'endpoints': {
+            'reports': {'method': 'GET', 'path': '/reports'},
+        },
+    }
+)
+
+# Each event produces one JSON line, e.g.:
+# {"kind": "request_start", "source": "live", "ts": 1718000000.123, "endpoint": "reports",
+#  "url": "https://api.example.com/v1/reports", "request_index": null, "attempt": null,
+#  "page_index": null, "data": {"method": "GET"}}
+#
+# {"kind": "request_end", "source": "live", "ts": 1718000000.456, "endpoint": "reports",
+#  "url": "https://api.example.com/v1/reports", "request_index": null, "attempt": null,
+#  "page_index": null, "data": {"status_code": 200, "elapsed_ms": 312.4, ...}}
+
+# filter to just the events you care about using on_event_kinds:
+client_filtered = APIClient(
+    {  # noqa: F821
+        'base_url': 'https://api.example.com/v1',
+        'on_event': on_event,
+        'on_event_kinds': {'request_end', 'stopped', 'error'},
+        'endpoints': {
+            'reports': {'method': 'GET', 'path': '/reports'},
+        },
+    }
+)

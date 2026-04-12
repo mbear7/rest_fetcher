@@ -2,6 +2,9 @@
 
 ## 0.5.7
 
+- **`fetch_pages()`:** new `APIClient` method that materializes `stream()` into a list. Always returns `list[page]` regardless of page count — `fetch()` unwraps single-page results to the bare value; `fetch_pages()` never does. `on_complete` follows stream semantics (fires with `StreamSummary`, return value ignored). Accepts the same `max_pages`, `max_requests`, and `time_limit` caps as `fetch()` and `stream()`.
+- **`PaginationEvent.to_dict()`:** serializes all event fields except `mono` (process-local monotonic timestamp) to a stable, JSON-serializable dict. Key set is consistent across all event kinds — `None` fields are included. Intended for ETL audit logging via `on_event`.
+- **Internal structural cleanups** (no behaviour change): extracted `_dispatch_on_error_action` shared helper from the two `on_error` dispatch paths; replaced `stream_run` monkey-patch with an explicit `summary_sink` parameter; removed ~20 `hasattr` guards from `CycleRunner.run()` that were made redundant by the `_RunStateLike` Protocol.
 - **Strict schema validation by default:** `validate()` now defaults to `strict=True`. Unknown keys raise `SchemaError` with all issues reported together. Pass `strict=False` to emit `SchemaValidationWarning` instead.
 
 ## 0.5.6

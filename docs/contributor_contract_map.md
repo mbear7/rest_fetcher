@@ -78,7 +78,9 @@ Fragile implementation seams
 1. Error handling has two distinct raise contexts.
    - `_handle_error_response(...)` constructs an exception locally and must use `raise exc`.
    - `_handle_request_cycle_error(...)` runs inside an active `except` path and must use bare `raise` to preserve traceback.
-   - Do not unify these into one generic raise helper.
+   - `_dispatch_on_error_action(...)` handles shared action interpretation (state bookkeeping,
+     outcome/signal construction, `CallbackError` for invalid returns) but intentionally does not
+     raise — each caller uses its own appropriate raise form.
 
 2. `client.py` and `pagination.py` communicate through a private run-state contract.
    - Keep the contract aligned with what `CycleRunner` actually consumes.
@@ -88,6 +90,13 @@ Fragile implementation seams
    - Keep the common request-cycle envelope shared.
    - Keep source-specific response acquisition narrow.
    - Avoid reintroducing duplicated accounting/event/error logic across live and playback.
+
+4. `_rf_pagination_helper` is a private three-way protocol.
+   - Built-in strategies tag their pagination-config dicts with `'_rf_pagination_helper': True`.
+   - `_FetchJob._resolve_config` in `client.py` inspects this tag to extract strategy-provided
+     lifecycle hooks without requiring separate config keys.
+   - `schema.py`'s `_validate_pagination` skips unknown-key checks for tagged dicts.
+   - Third-party strategies must not use this tag. It is internal to the library.
 
 Review checklist for risky changes
 ----------------------------------

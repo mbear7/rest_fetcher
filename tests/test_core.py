@@ -2236,6 +2236,76 @@ class TestAPIClientFetch(unittest.TestCase):
                 client.fetch('test')
             self.assertIn('continue', str(ctx.exception))
 
+    def test_on_error_none_return_value_raises_callback_error(self):
+        "returning None (e.g. missing return statement) has its own specific message"
+        with patch('requests.Session.request') as mock_req:
+            mock_req.return_value = make_response(404)
+            client = self._client(
+                endpoint_config={
+                    'on_error': lambda exc, state: None  # forgot to return
+                }
+            )
+            with self.assertRaises(CallbackError) as ctx:
+                client.fetch('test')
+            self.assertIn('None', str(ctx.exception))
+            self.assertIn('raise', str(ctx.exception))
+            self.assertIn('skip', str(ctx.exception))
+            self.assertIn('stop', str(ctx.exception))
+
+    def test_on_error_stop_http_error_path(self):
+        "on_error returning stop on a non-retryable HTTP error stops cleanly (error_stop)"
+        with patch('requests.Session.request') as mock_req:
+            mock_req.return_value = make_response(404)
+            client = self._client(endpoint_config={'on_error': lambda exc, state: 'stop'})
+            run = client.stream_run('test')
+            pages = list(run)
+        self.assertEqual(pages, [])
+        self.assertIsNotNone(run.summary)
+        self.assertIsNotNone(run.summary.stop)
+        self.assertEqual(run.summary.stop.kind, 'error_stop')
+
+    def test_on_error_skip_cycle_error_path(self):
+        "on_error returning skip on a network error returns empty result via cycle-error path"
+        import requests as req_lib
+
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'retry': {'max_attempts': 1},
+                'endpoints': {
+                    'test': {
+                        'method': 'GET',
+                        'path': '/test',
+                        'on_error': lambda exc, state: 'skip',
+                    }
+                },
+            }
+        )
+        with patch('requests.Session.request', side_effect=req_lib.ConnectionError('refused')):
+            result = client.fetch('test')
+        self.assertEqual(result, {})
+
+    def test_on_error_raise_cycle_error_path(self):
+        "on_error returning raise on a network error propagates RequestError via cycle-error path"
+        import requests as req_lib
+
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'retry': {'max_attempts': 1},
+                'endpoints': {
+                    'test': {
+                        'method': 'GET',
+                        'path': '/test',
+                        'on_error': lambda exc, state: 'raise',
+                    }
+                },
+            }
+        )
+        with patch('requests.Session.request', side_effect=req_lib.ConnectionError('refused')):
+            with self.assertRaises(RequestError):
+                client.fetch('test')
+
     def test_on_error_exception_propagates_directly(self):
         "if on_error itself raises, the exception propagates as-is (not wrapped in CallbackError)"
         with patch('requests.Session.request') as mock_req:
@@ -2289,6 +2359,65 @@ class TestAPIClientFetch(unittest.TestCase):
             client.fetch('ep')
         self.assertFalse(seen['has_headers'])
 
+    def test_stream_run_summary_captured_when_on_complete_also_set(self):
+        "summary_sink fires after on_complete — both must run and summary must be set"
+        on_complete_calls = []
+
+        client = self._client(
+            endpoint_config={
+                'pagination': cursor_pagination('cursor', 'next_cursor', 'items'),
+                'mock': [
+                    {'items': [1, 2], 'next_cursor': 'p2'},
+                    {'items': [3], 'next_cursor': None},
+                ],
+                'on_complete': lambda summary, state: on_complete_calls.append(summary),
+            }
+        )
+
+        run = client.stream_run('test')
+        pages = list(run)
+
+        self.assertEqual(pages, [[1, 2], [3]])
+        self.assertEqual(len(on_complete_calls), 1)
+        self.assertIsInstance(run.summary, StreamSummary)
+        self.assertIs(on_complete_calls[0], run.summary)
+
+    def test_stream_run_summary_none_when_on_complete_raises(self):
+        "if on_complete raises, summary must not be exposed — run.summary stays None"
+
+        def bad_on_complete(summary, state):
+            raise ValueError('on_complete exploded')
+
+        client = self._client(
+            endpoint_config={
+                'mock': [{'data': 1}],
+                'on_complete': bad_on_complete,
+            }
+        )
+
+        run = client.stream_run('test')
+        with self.assertRaises(CallbackError):
+            list(run)
+        self.assertIsNone(run.summary)
+
+    def test_stream_run_summary_captured_exactly_once_no_pagination(self):
+        "summary is set exactly once on clean completion — no duplicate capture on single-request runs"
+        captured = []
+
+        client = self._client(
+            endpoint_config={
+                'mock': [{'x': 1}],
+                'on_complete': lambda summary, state: captured.append(summary),
+            }
+        )
+
+        run = client.stream_run('test')
+        list(run)
+
+        self.assertEqual(len(captured), 1)
+        self.assertIsInstance(run.summary, StreamSummary)
+        self.assertIs(captured[0], run.summary)
+
     def test_context_manager_closes_session(self):
         with self._client() as client:
             pass
@@ -2327,6 +2456,57 @@ class TestAPIClientFetch(unittest.TestCase):
             client = APIClient(schema)
             result = client.fetch('test')
             self.assertEqual(result, {'parsed': 'from_xml'})
+
+    def test_fetch_pages_always_returns_list_single_page(self):
+        "fetch_pages() wraps single-page results in a list, unlike fetch() which unwraps them"
+        client = self._client(endpoint_config={'mock': [{'data': [1, 2, 3]}]})
+        result = client.fetch_pages('test')
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, [{'data': [1, 2, 3]}])
+
+    def test_fetch_pages_multi_page_returns_list_of_pages(self):
+        client = self._client(
+            endpoint_config={
+                'pagination': cursor_pagination('cursor', 'next_cursor', 'items'),
+                'mock': [
+                    {'items': [1, 2], 'next_cursor': 'p2'},
+                    {'items': [3], 'next_cursor': None},
+                ],
+            }
+        )
+        result = client.fetch_pages('test')
+        self.assertEqual(result, [[1, 2], [3]])
+
+    def test_fetch_pages_respects_max_pages_cap(self):
+        client = self._client(
+            endpoint_config={
+                'pagination': cursor_pagination('cursor', 'next_cursor', 'items'),
+                'mock': [
+                    {'items': [1], 'next_cursor': 'p2'},
+                    {'items': [2], 'next_cursor': 'p3'},
+                    {'items': [3], 'next_cursor': None},
+                ],
+            }
+        )
+        result = client.fetch_pages('test', max_pages=2)
+        self.assertEqual(result, [[1], [2]])
+
+    def test_fetch_pages_on_complete_not_called_for_data_transform(self):
+        "on_complete fires with stream semantics — return value is ignored, not the page data"
+        on_complete_calls = []
+
+        client = self._client(
+            endpoint_config={
+                'mock': [{'x': 1}],
+                'on_complete': lambda summary, state: on_complete_calls.append(summary),
+            }
+        )
+        result = client.fetch_pages('test')
+
+        self.assertEqual(result, [{'x': 1}])
+        self.assertEqual(len(on_complete_calls), 1)
+        # on_complete received StreamSummary, not the page data
+        self.assertIsInstance(on_complete_calls[0], StreamSummary)
 
 
 class TestFormEncoded(unittest.TestCase):
@@ -6741,3 +6921,56 @@ class TestErrorRaiseSemantics(unittest.TestCase):
             names.append(tb.tb_frame.f_code.co_name)
             tb = tb.tb_next
         self.assertIn('original_raise_site', names)
+
+
+class TestPaginationEventToDict(unittest.TestCase):
+    def test_to_dict_includes_standard_fields(self):
+        from rest_fetcher.events import now_event
+
+        ev = now_event(kind='request_start', source='live', endpoint='ep', url='https://x.com/a')
+        d = ev.to_dict()
+
+        self.assertEqual(d['kind'], 'request_start')
+        self.assertEqual(d['source'], 'live')
+        self.assertEqual(d['endpoint'], 'ep')
+        self.assertEqual(d['url'], 'https://x.com/a')
+        self.assertIn('ts', d)
+        self.assertIsInstance(d['ts'], float)
+
+    def test_to_dict_omits_mono(self):
+        from rest_fetcher.events import now_event
+
+        ev = now_event(kind='page_parsed', source='playback')
+        self.assertNotIn('mono', ev.to_dict())
+
+    def test_to_dict_key_set_is_stable_across_event_kinds(self):
+        "all events produce the same key set regardless of which optional fields are None"
+        from rest_fetcher.events import now_event
+
+        ev1 = now_event(kind='request_start', source='live', endpoint='ep', url='https://x.com')
+        ev2 = now_event(kind='stopped', source='live', data={'stop_kind': 'max_pages'})
+        self.assertEqual(set(ev1.to_dict().keys()), set(ev2.to_dict().keys()))
+
+    def test_to_dict_data_field_included(self):
+        from rest_fetcher.events import now_event
+
+        payload = {'status_code': 200, 'elapsed_ms': 123.4}
+        ev = now_event(kind='request_end', source='live', data=payload)
+        self.assertEqual(ev.to_dict()['data'], payload)
+
+    def test_to_dict_is_json_serializable(self):
+        import json
+
+        from rest_fetcher.events import now_event
+
+        ev = now_event(
+            kind='request_end',
+            source='live',
+            endpoint='ep',
+            url='https://x.com/a',
+            data={'elapsed_ms': 42.0},
+        )
+        serialized = json.dumps(ev.to_dict())
+        restored = json.loads(serialized)
+        self.assertEqual(restored['kind'], 'request_end')
+        self.assertEqual(restored['data']['elapsed_ms'], 42.0)

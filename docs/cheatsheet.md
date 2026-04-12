@@ -257,6 +257,15 @@ return {'params_mode': 'replace'}                         # replace with no para
 
 Every `PaginationEvent` has base fields: `kind`, `source` (`'live'`/`'playback'`), `ts`, `mono`, `endpoint`, `url`, and `data` (kind-specific dict). Correlation fields `request_index`, `attempt`, `page_index` are reserved and currently always `None`.
 
+`PaginationEvent.to_dict()` returns a JSON-serializable dict of all fields except `mono` (process-local, meaningless outside the run). The key set is stable across all event kinds — `None` fields are included.
+
+```python
+import json
+
+def on_event(ev):
+    print(json.dumps(ev.to_dict()))   # ETL audit log, one line per event
+```
+
 | Kind | When emitted | `data` keys |
 |---|---|---|
 | `request_start` | Before the request cycle for a page/run path, prior to the retry loop. | `method` |
@@ -657,6 +666,27 @@ print(f'pages={summary.pages}, requests={summary.requests}')
 ```
 
 `StreamSummary` fields: `.pages` (int), `.requests` (int, counts actual attempts in both live and playback runs), `.stop` (`StopSignal | None`), `.endpoint` (`str | None`), `.source` (`'live' | 'playback'`), `.retries` (int), `.elapsed_seconds` (float), `.retry_wait_seconds`, `.rate_limit_wait_seconds`, `.adaptive_wait_seconds`, `.static_wait_seconds`, `.total_wait_seconds`, `.bytes_received` (int, total response body bytes processed), `.retry_bytes_received` (int, total response body bytes from retry attempts only). Fields may grow additively over time; prefer named attribute access. `StopSignal` fields: `.kind` (`'max_pages'`, `'max_requests'`, `'next_request_none'`, or `'error_stop'`), `.limit` (`int | None`), `.observed` (`int | None`).
+
+### 8.12 `fetch_pages()` — always a list, stream semantics
+
+`fetch_pages()` is `list(stream(...))` materialized. Unlike `fetch()`, it always returns a list regardless of page count — `fetch()` unwraps single-page results to the bare value; `fetch_pages()` never does.
+
+```python
+# fetch() returns dict for one page, list for many — shape varies with data volume
+result = client.fetch('users')        # dict if one page, list[dict] if many
+
+# fetch_pages() is always a list — predictable shape for downstream code
+pages = client.fetch_pages('users')   # always list, even for a single page
+```
+
+`on_complete` in `fetch_pages()` follows stream semantics: it fires with `(StreamSummary, state)` at normal completion and its return value is ignored. There is no data-transformation via `on_complete` return value here — use `fetch()` for that.
+
+Accepts the same safety caps as `fetch()` and `stream()`:
+
+```python
+pages = client.fetch_pages('events', max_pages=10)
+pages = client.fetch_pages('events', params={'status': 'open'}, max_requests=50)
+```
 
 ---
 

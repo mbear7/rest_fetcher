@@ -52,6 +52,25 @@ class PaginationEvent:
     page_index: int | None = None
     data: dict[str, Any] | None = None
 
+    def to_dict(self) -> dict[str, Any]:
+        """Return a serializable dict of this event.
+
+        ``mono`` is omitted — it is a process-local monotonic timestamp with no
+        meaning outside the current run. All other fields are included, with
+        ``None`` values preserved so the key set is stable across event kinds.
+        """
+        return {
+            'kind': self.kind,
+            'source': self.source,
+            'ts': self.ts,
+            'endpoint': self.endpoint,
+            'url': self.url,
+            'request_index': self.request_index,
+            'attempt': self.attempt,
+            'page_index': self.page_index,
+            'data': self.data,
+        }
+
 
 def now_event(
     *,

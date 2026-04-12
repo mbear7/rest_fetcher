@@ -27,7 +27,7 @@ pip install -e .
   Supports built-in `auto`, `json`, `text`, `xml`, `csv`, and `bytes` formats, plus `canonical_parser(content_bytes, context)` for custom parsing before pagination and downstream callbacks.
 
 - **Streaming and full-fetch execution modes**  
-  Use `fetch()` to collect results, or `stream()` / `stream_run()` when page-by-page processing and stop observability matter.
+  Use `fetch()` to collect results, `fetch_pages()` for a predictable list that never unwraps single-page results, or `stream()` / `stream_run()` when page-by-page processing and stop observability matter.
 
 - **Playback mode for deterministic development, debugging, and tests**  
   Record live responses once and replay them later through the same parsing and callback pipeline.
@@ -42,7 +42,7 @@ pip install -e .
   Includes bearer token, basic auth, OAuth2 client credentials, OAuth2 password grant, and custom auth callbacks.
 
 - **Lifecycle telemetry via `on_event`**  
-  Emits structured runtime events for request, retry, parse, callback-error, stop, playback, and rate-limit behavior.
+  Emits structured runtime events for request, retry, parse, callback-error, stop, playback, and rate-limit behavior. `PaginationEvent.to_dict()` returns a stable, JSON-serializable dict for ETL audit logging.
 
 - **Typed schema builder for IDE-friendly configuration**  
   `SchemaBuilder` provides a more guided alternative to writing raw schema dictionaries by hand.
@@ -86,6 +86,32 @@ schema = (
     .build()
 )
 client = APIClient(schema)
+```
+
+## fetch_pages() and event serialization
+
+`fetch_pages()` materializes `stream()` into a list and always returns a list — unlike `fetch()`, which unwraps single-page results to the bare value:
+
+```python
+# fetch() shape depends on page count — dict for one page, list for many
+result = client.fetch('users')
+
+# fetch_pages() is always a list, even for a single-page response
+pages = client.fetch_pages('users')
+pages = client.fetch_pages('users', max_pages=10)  # same caps as fetch() and stream()
+```
+
+`on_complete` in `fetch_pages()` follows stream semantics: fires with `(StreamSummary, state)`, return value ignored. Use `fetch()` if you need `on_complete` to transform the returned data.
+
+`PaginationEvent.to_dict()` returns a stable, JSON-serializable dict for all event fields except `mono`. Useful for ETL audit logging:
+
+```python
+import json
+
+client = APIClient({
+    ...
+    'on_event': lambda ev: print(json.dumps(ev.to_dict())),
+})
 ```
 
 ## Schema validation

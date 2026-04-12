@@ -687,8 +687,7 @@ class CycleRunner:
         page_state.update(request.get('params', {}))
         if run_state is not None:
             run_state.page_state = page_state
-            if hasattr(run_state, 'expose'):
-                run_state.expose(page_state)
+            run_state.expose(page_state)
         all_pages: list[Any] | None = [] if (mode == 'fetch' and self._on_complete) else None
         page_num = 0
         page_state['_completed_pages'] = 0
@@ -702,24 +701,14 @@ class CycleRunner:
                 stop = ctx.check_max_pages()
                 if stop is not None:
                     self._record_stop(page_state, stop)
-                    if run_state is not None and hasattr(run_state, 'emit_event'):
-                        source = _event_source(run_state)
-                        event_data = (
-                            run_state.stop_event_data(stop)
-                            if hasattr(run_state, 'stop_event_data')
-                            else {
-                                'stop_kind': stop.kind,
-                                'observed': stop.observed,
-                                'limit': stop.limit,
-                            }
-                        )
+                    if run_state is not None:
                         run_state.emit_event(
                             now_event(
                                 kind='stopped',
-                                source=source,
-                                endpoint=getattr(run_state, 'endpoint_name', None),
+                                source=_event_source(run_state),
+                                endpoint=run_state.endpoint_name,
                                 url=request.get('url'),
-                                data=event_data,
+                                data=run_state.stop_event_data(stop),
                             )
                         )
                     logger.debug(
@@ -727,30 +716,20 @@ class CycleRunner:
                     )
                     break
 
-            if run_state is not None and hasattr(run_state, 'reset_page_cycle'):
+            if run_state is not None:
                 run_state.reset_page_cycle()
 
             fetch_result = fetch_fn(request, ctx, run_state=run_state)
             if isinstance(fetch_result, StopSignal):
                 self._record_stop(page_state, fetch_result)
-                if run_state is not None and hasattr(run_state, 'emit_event'):
-                    source = _event_source(run_state)
-                    event_data = (
-                        run_state.stop_event_data(fetch_result)
-                        if hasattr(run_state, 'stop_event_data')
-                        else {
-                            'stop_kind': fetch_result.kind,
-                            'observed': fetch_result.observed,
-                            'limit': fetch_result.limit,
-                        }
-                    )
+                if run_state is not None:
                     run_state.emit_event(
                         now_event(
                             kind='stopped',
-                            source=source,
-                            endpoint=getattr(run_state, 'endpoint_name', None),
+                            source=_event_source(run_state),
+                            endpoint=run_state.endpoint_name,
                             url=request.get('url'),
-                            data=event_data,
+                            data=run_state.stop_event_data(fetch_result),
                         )
                     )
                 logger.debug(
@@ -763,10 +742,9 @@ class CycleRunner:
                 if (
                     self._on_page_complete is not None
                     and run_state is not None
-                    and hasattr(run_state, 'build_page_cycle_outcome')
                     and fetch_result.kind == 'error_stop'
                 ):
-                    _last_err = getattr(run_state, '_last_error', None)
+                    _last_err = run_state._last_error
                     _err_status = getattr(_last_err, 'status_code', None)
                     _err_outcome = run_state.build_page_cycle_outcome(
                         status_code=_err_status,
@@ -783,13 +761,12 @@ class CycleRunner:
             post_auth_request = fetch_result.request_kwargs
             page_state['_response_headers'] = headers
 
-            if run_state is not None and hasattr(run_state, 'emit_event'):
-                source = _event_source(run_state)
+            if run_state is not None:
                 run_state.emit_event(
                     now_event(
                         kind='page_parsed',
-                        source=source,
-                        endpoint=getattr(run_state, 'endpoint_name', None),
+                        source=_event_source(run_state),
+                        endpoint=run_state.endpoint_name,
                         url=post_auth_request.get('url'),
                         data=run_state.page_parsed_event_data(
                             status_code=headers.get('_status_code')
@@ -802,7 +779,7 @@ class CycleRunner:
             # callbacks mutate the live request that produced this page.
             request_snapshot = _copy_request_for_snapshot(post_auth_request)
             page_state['_request'] = request_snapshot
-            if run_state is not None and hasattr(run_state, 'expose'):
+            if run_state is not None:
                 run_state.expose(page_state)
             state = StateView(page_state)
 
@@ -812,13 +789,12 @@ class CycleRunner:
                         self._on_response, page_payload, state, name='on_response'
                     )
                 except CallbackError as exc:
-                    if run_state is not None and hasattr(run_state, 'emit_event'):
-                        source = _event_source(run_state)
+                    if run_state is not None:
                         run_state.emit_event(
                             now_event(
                                 kind='callback_error',
-                                source=source,
-                                endpoint=getattr(run_state, 'endpoint_name', None),
+                                source=_event_source(run_state),
+                                endpoint=run_state.endpoint_name,
                                 url=post_auth_request.get('url'),
                                 data={
                                     'callback': 'on_response',
@@ -834,13 +810,12 @@ class CycleRunner:
             try:
                 safe_call(self._on_page, page_data, state, name='on_page')
             except CallbackError as exc:
-                if run_state is not None and hasattr(run_state, 'emit_event'):
-                    source = _event_source(run_state)
+                if run_state is not None:
                     run_state.emit_event(
                         now_event(
                             kind='callback_error',
-                            source=source,
-                            endpoint=getattr(run_state, 'endpoint_name', None),
+                            source=_event_source(run_state),
+                            endpoint=run_state.endpoint_name,
                             url=post_auth_request.get('url'),
                             data={
                                 'callback': 'on_page',
@@ -862,13 +837,12 @@ class CycleRunner:
                         self._update_state, page_payload, state, name='update_state'
                     )
                 except CallbackError as exc:
-                    if run_state is not None and hasattr(run_state, 'emit_event'):
-                        source = _event_source(run_state)
+                    if run_state is not None:
                         run_state.emit_event(
                             now_event(
                                 kind='callback_error',
-                                source=source,
-                                endpoint=getattr(run_state, 'endpoint_name', None),
+                                source=_event_source(run_state),
+                                endpoint=run_state.endpoint_name,
                                 url=post_auth_request.get('url'),
                                 data={
                                     'callback': 'update_state',
@@ -882,7 +856,7 @@ class CycleRunner:
                 # it returns a dict to merge into the live run-local page_state.
                 if isinstance(updated, dict) and updated:
                     page_state.update(updated)
-                    if run_state is not None and hasattr(run_state, 'expose'):
+                    if run_state is not None:
                         run_state.expose(page_state)
                     state = StateView(page_state)
 
@@ -893,26 +867,21 @@ class CycleRunner:
                 page_state['_completed_pages'] = ctx.page_count
             else:
                 page_state['_completed_pages'] = page_state.get('_completed_pages', 0) + 1
-            if run_state is not None and hasattr(run_state, 'mark_page_complete'):
+            if run_state is not None:
                 run_state.mark_page_complete()
-                if hasattr(run_state, 'expose'):
-                    run_state.expose(page_state)
+                run_state.expose(page_state)
 
             # on_page_complete hook — fires after full page cycle completes,
             # before next_request is called. not fired on on_error->'raise'.
             # Returns an adaptive delay (seconds) to apply if pagination continues.
             _adaptive_delay_s = None
-            if (
-                self._on_page_complete is not None
-                and run_state is not None
-                and hasattr(run_state, 'build_page_cycle_outcome')
-            ):
+            if self._on_page_complete is not None and run_state is not None:
                 _cycle_stop = (
                     page_state.get('_stop_signal')
                     if isinstance(page_state.get('_stop_signal'), StopSignal)
                     else None
                 )
-                _last_err = getattr(run_state, '_last_error', None)
+                _last_err = run_state._last_error
                 _outcome = run_state.build_page_cycle_outcome(
                     status_code=headers.get('_status_code') if headers else None,
                     error=_last_err,
@@ -927,13 +896,12 @@ class CycleRunner:
             try:
                 overrides = safe_call(self._next_request, parsed_body, state, name='next_request')
             except CallbackError as exc:
-                if run_state is not None and hasattr(run_state, 'emit_event'):
-                    source = _event_source(run_state)
+                if run_state is not None:
                     run_state.emit_event(
                         now_event(
                             kind='callback_error',
-                            source=source,
-                            endpoint=getattr(run_state, 'endpoint_name', None),
+                            source=_event_source(run_state),
+                            endpoint=run_state.endpoint_name,
                             url=request.get('url'),
                             data={
                                 'callback': 'next_request',
@@ -947,13 +915,12 @@ class CycleRunner:
             if overrides is None:
                 stop = StopSignal(kind='next_request_none')
                 self._record_stop(page_state, stop)
-                if run_state is not None and hasattr(run_state, 'emit_event'):
-                    source = _event_source(run_state)
+                if run_state is not None:
                     run_state.emit_event(
                         now_event(
                             kind='stopped',
-                            source=source,
-                            endpoint=getattr(run_state, 'endpoint_name', None),
+                            source=_event_source(run_state),
+                            endpoint=run_state.endpoint_name,
                             url=request.get('url'),
                             data=run_state.stop_event_data(stop),
                         )
@@ -994,19 +961,15 @@ class CycleRunner:
                     ctx.check_deadline()
 
             if _adaptive_delay_s is not None and _adaptive_delay_s > 0:
-                _emit = getattr(run_state, 'emit_event', None)
-                _source = _event_source(run_state)
-                _ep = getattr(run_state, 'endpoint_name', None)
                 logger.debug('adaptive delay: sleeping %.3fs', _adaptive_delay_s)
                 time.sleep(_adaptive_delay_s)
                 if run_state is not None:
                     run_state.mark_wait('adaptive', _adaptive_delay_s)
-                if _emit is not None and run_state is not None:
-                    _emit(
+                    run_state.emit_event(
                         now_event(
                             kind='adaptive_wait_end',
-                            source=_source,
-                            endpoint=_ep,
+                            source=_event_source(run_state),
+                            endpoint=run_state.endpoint_name,
                             url=post_auth_request.get('url'),
                             data=run_state.wait_event_data(
                                 'adaptive', wait_ms=_adaptive_delay_s * 1000.0
@@ -1027,13 +990,12 @@ class CycleRunner:
             try:
                 result = safe_call(self._on_complete, all_pages, final_state, name='on_complete')
             except CallbackError as exc:
-                if run_state is not None and hasattr(run_state, 'emit_event'):
-                    source = _event_source(run_state)
+                if run_state is not None:
                     run_state.emit_event(
                         now_event(
                             kind='callback_error',
-                            source=source,
-                            endpoint=getattr(run_state, 'endpoint_name', None),
+                            source=_event_source(run_state),
+                            endpoint=run_state.endpoint_name,
                             url=request.get('url'),
                             data={
                                 'callback': 'on_complete',
