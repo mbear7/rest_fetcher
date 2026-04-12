@@ -288,9 +288,11 @@ rest_fetcher/
 │   ├── context.py
 │   ├── events.py
 │   ├── exceptions.py
-│   ├── pagination.py
+│   ├── pagination.py        — CycleRunner engine; re-exports strategies for compat
+│   ├── strategies.py        — five built-in pagination helpers + path utilities
+│   ├── _run_state.py        — _RunState per-run execution state (internal)
 │   ├── parsing.py
-│   ├── playback.py
+│   ├── playback.py          — playback + header/URL scrubbing utilities
 │   ├── rate_limit.py
 │   ├── retry.py
 │   ├── schema.py

@@ -8,6 +8,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlsplit
 
 from requests.structures import CaseInsensitiveDict
 
@@ -21,9 +22,102 @@ __all__ = [
     'PlaybackHandler',
     'build_playback_handler',
     'deserialize_playback_response',
+    '_scrub',
+    '_scrub_recorded_url',
+    '_scrub_playback_envelope',
 ]
 
 logger = logging.getLogger('rest_fetcher.playback')
+
+# ---------------------------------------------------------------------------
+# Header and URL scrubbing — shared between playback recording and request logging
+# ---------------------------------------------------------------------------
+
+# default set of header names (lowercase) whose values are always redacted
+_SCRUB_HEADERS_DEFAULT = {
+    'authorization',
+    'x-api-key',
+    'x-api-secret',
+    'x-auth-token',
+    'api-key',
+    'proxy-authorization',
+    'cookie',
+    'set-cookie',
+}
+
+# substring patterns: any header key containing one of these (case-insensitive) is scrubbed
+_SCRUB_PATTERNS = ('token', 'secret', 'password', 'key', 'auth')
+
+_SCRUB_QUERY_PARAMS_DEFAULT = {
+    'access_token',
+    'refresh_token',
+    'api_key',
+    'client_secret',
+    'token',
+    'sig',
+    'signature',
+}
+_SCRUB_QUERY_PATTERNS = ('token', 'secret', 'key', 'sig', 'auth')
+
+
+def _scrub(headers: dict[str, Any], extra_scrub: list[str] | None = None) -> dict[str, Any]:
+    """
+    redacts sensitive header values before logging or recording.
+    exact-match: _SCRUB_HEADERS_DEFAULT + schema scrub_headers list.
+    pattern-match: any header key containing 'token', 'secret', 'password', 'key', 'auth'.
+    """
+    exact = _SCRUB_HEADERS_DEFAULT | {h.lower() for h in (extra_scrub or [])}
+    result = {}
+    for k, v in headers.items():
+        k_lower = k.lower()
+        if k_lower in exact or any(p in k_lower for p in _SCRUB_PATTERNS):
+            result[k] = '***'
+        else:
+            result[k] = v
+    return result
+
+
+def _scrub_recorded_url(url: str, extra_scrub: list[str] | None = None) -> str:
+    """
+    redact sensitive query parameter values in recorded playback URLs.
+    exact-match: built-in query defaults + schema scrub_query_params list.
+    pattern-match: any query key containing one of _SCRUB_QUERY_PATTERNS.
+    """
+    if not url:
+        return url
+    exact = _SCRUB_QUERY_PARAMS_DEFAULT | {h.lower() for h in (extra_scrub or [])}
+    parts = urlsplit(url)
+    if not parts.query:
+        return url
+    pairs = parse_qsl(parts.query, keep_blank_values=True)
+    scrubbed = []
+    for k, v in pairs:
+        k_lower = k.lower()
+        if k_lower in exact or any(p in k_lower for p in _SCRUB_QUERY_PATTERNS):
+            scrubbed.append((k, '[REDACTED]'))
+        else:
+            scrubbed.append((k, v))
+    encoded = urlencode(scrubbed, doseq=True).replace('%5B', '[').replace('%5D', ']')
+    return parts._replace(query=encoded).geturl()
+
+
+def _scrub_playback_envelope(
+    envelope: dict[str, Any],
+    extra_headers: list[str] | None = None,
+    extra_query_params: list[str] | None = None,
+) -> dict[str, Any]:
+    if not isinstance(envelope, dict):
+        return envelope
+    if 'request_headers' in envelope and isinstance(envelope.get('request_headers'), dict):
+        scrubbed = _scrub(envelope['request_headers'], extra_headers)
+        if scrubbed != envelope['request_headers']:
+            envelope = {**envelope, 'request_headers': scrubbed}
+    if envelope.get('url'):
+        scrubbed_url = _scrub_recorded_url(envelope['url'], extra_query_params)
+        if scrubbed_url != envelope['url']:
+            envelope = {**envelope, 'url': scrubbed_url}
+    return envelope
+
 
 _TEXT_FORMATS = {'json', 'xml', 'csv', 'text'}
 _XML_DECL_RE = re.compile(r"^\s*<\?xml[^>]*encoding\s*=\s*['\"]([^'\"]+)['\"]", re.IGNORECASE)
