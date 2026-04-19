@@ -36,7 +36,7 @@ from rest_fetcher import (
 )
 from rest_fetcher import CallbackError
 from rest_fetcher.pagination import CycleRunner, _resolve_path
-from rest_fetcher.parsing import default_parse_response
+from rest_fetcher.parsing import default_parse_response, detect_response_format
 from rest_fetcher.schema import validate
 
 
@@ -1966,3 +1966,32 @@ def test_url_header_pagination_stops_on_absent_or_empty_header():
     cfg = url_header_pagination('X-Next-Url', data_path='items')
     assert cfg['next_request']({}, {'_response_headers': {}}) is None
     assert cfg['next_request']({}, {'_response_headers': {'X-Next-Url': ''}}) is None
+
+
+class TestDetectResponseFormat(unittest.TestCase):
+    def _resp(self, content_type):
+        return SimpleNamespace(headers={'Content-Type': content_type})
+
+    def test_non_auto_format_returned_unchanged(self):
+        self.assertEqual(detect_response_format(self._resp('application/json'), 'xml'), 'xml')
+
+    def test_json_content_type_detected(self):
+        self.assertEqual(detect_response_format(self._resp('application/json')), 'json')
+
+    def test_xml_content_type_detected(self):
+        self.assertEqual(detect_response_format(self._resp('application/xml')), 'xml')
+
+    def test_csv_content_type_detected(self):
+        self.assertEqual(detect_response_format(self._resp('text/csv')), 'csv')
+
+    def test_text_plain_detected(self):
+        self.assertEqual(detect_response_format(self._resp('text/plain')), 'text')
+
+    def test_text_html_detected(self):
+        self.assertEqual(detect_response_format(self._resp('text/html; charset=utf-8')), 'text')
+
+    def test_unknown_content_type_falls_back_to_bytes(self):
+        self.assertEqual(detect_response_format(self._resp('application/octet-stream')), 'bytes')
+
+    def test_empty_content_type_falls_back_to_bytes(self):
+        self.assertEqual(detect_response_format(self._resp('')), 'bytes')

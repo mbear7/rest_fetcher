@@ -17,6 +17,7 @@ import requests
 
 from rest_fetcher import APIClient, PaginationEvent, PlaybackError, RateLimitExceeded, SchemaError
 from rest_fetcher.pagination import cursor_pagination
+from rest_fetcher.rate_limit import TokenBucket, build_token_bucket
 
 
 def _json_response(body=None, status=200, headers=None):
@@ -1611,3 +1612,73 @@ class TestRetryBytesReceivedTelemetry(unittest.TestCase):
 
         self.assertEqual(len(seen_retry_bytes), 1)
         self.assertGreater(seen_retry_bytes[0], 0)
+
+
+class TestTokenBucketUnit(unittest.TestCase):
+    def test_acquire_zero_tokens_returns_immediately(self):
+        bucket = TokenBucket(10.0, 5)
+        self.assertEqual(bucket.acquire(0), 0.0)
+
+    def test_sleep_zero_seconds_is_noop(self):
+        slept = []
+        bucket = TokenBucket(10.0, 5, sleep=slept.append)
+        bucket.sleep(0)
+        self.assertEqual(slept, [])
+
+    def test_acquire_refills_tokens_over_time(self):
+        times = iter([0.0, 0.0, 1.0])
+        bucket = TokenBucket(2.0, 2, clock=lambda: next(times))
+        bucket.acquire(2.0)  # drain full burst; elapsed=0 so no refill
+        wait = bucket.acquire(1.0)  # 1s elapsed → 2 tokens refilled; no wait
+        self.assertEqual(wait, 0.0)
+
+    def test_init_rejects_non_positive_rps(self):
+        with self.assertRaises(SchemaError):
+            TokenBucket(-1.0, 5)
+
+    def test_init_rejects_non_positive_burst(self):
+        with self.assertRaises(SchemaError):
+            TokenBucket(10.0, -1)
+
+
+class TestBuildTokenBucketErrors(unittest.TestCase):
+    def _base(self, **overrides):
+        cfg = {'requests_per_second': 1.0, 'burst': 5}
+        cfg.update(overrides)
+        return cfg
+
+    def test_wrong_strategy_raises(self):
+        with self.assertRaises(SchemaError):
+            build_token_bucket(self._base(strategy='leaky_bucket'))
+
+    def test_missing_rps_raises(self):
+        with self.assertRaises(SchemaError):
+            build_token_bucket({'burst': 5})
+
+    def test_non_positive_rps_raises(self):
+        with self.assertRaises(SchemaError):
+            build_token_bucket(self._base(requests_per_second=-1.0))
+
+    def test_missing_burst_raises(self):
+        with self.assertRaises(SchemaError):
+            build_token_bucket({'requests_per_second': 1.0})
+
+    def test_non_positive_burst_raises(self):
+        with self.assertRaises(SchemaError):
+            build_token_bucket(self._base(burst=-1))
+
+    def test_invalid_on_limit_raises(self):
+        with self.assertRaises(SchemaError):
+            build_token_bucket(self._base(on_limit='explode'))
+
+    def test_non_callable_clock_raises(self):
+        with self.assertRaises(SchemaError):
+            build_token_bucket(self._base(clock='not_callable'))
+
+    def test_non_callable_sleep_raises(self):
+        with self.assertRaises(SchemaError):
+            build_token_bucket(self._base(sleep=42))
+
+    def test_none_config_raises(self):
+        with self.assertRaises(SchemaError):
+            build_token_bucket(None)

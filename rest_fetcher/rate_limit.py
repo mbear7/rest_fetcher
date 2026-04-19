@@ -42,14 +42,6 @@ class TokenBucket:
         self._last = self._clock()
         self._lock = threading.Lock()
 
-    @property
-    def rps(self) -> float:
-        return self._rps
-
-    @property
-    def burst(self) -> int:
-        return self._capacity
-
     def acquire(self, tokens: float = 1.0) -> float:
         """Return required wait time in seconds to acquire `tokens` (>= 0).
 

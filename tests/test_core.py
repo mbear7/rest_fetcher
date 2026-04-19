@@ -1435,6 +1435,94 @@ class TestAuth(unittest.TestCase):
         _, kwargs = mock_request.call_args
         self.assertEqual(kwargs['headers']['Authorization'], 'Bearer tok1')
 
+    def test_oauth2_extra_token_params_merged_into_payload(self):
+        handler = build_auth_handler(
+            {
+                'type': 'oauth2',
+                'token_url': 'https://auth.example.com/token',
+                'client_id': 'id',
+                'client_secret': 'secret',
+                'extra_token_params': {'audience': 'https://api.example.com'},
+            }
+        )
+        with patch('requests.post') as mock_post:
+            mock_post.return_value = make_response(200, {'access_token': 'tok', 'expires_in': 3600})
+            handler.apply({'headers': {}})
+        _, kwargs = mock_post.call_args
+        self.assertEqual(kwargs['data']['audience'], 'https://api.example.com')
+
+    def test_oauth2_token_headers_sent_to_token_endpoint(self):
+        handler = build_auth_handler(
+            {
+                'type': 'oauth2',
+                'token_url': 'https://auth.example.com/token',
+                'client_id': 'id',
+                'client_secret': 'secret',
+                'token_headers': {'X-Tenant': 'acme'},
+            }
+        )
+        with patch('requests.post') as mock_post:
+            mock_post.return_value = make_response(200, {'access_token': 'tok', 'expires_in': 3600})
+            handler.apply({'headers': {}})
+        _, kwargs = mock_post.call_args
+        self.assertEqual(kwargs['headers']['X-Tenant'], 'acme')
+
+    def test_oauth2_client_auth_style_basic_uses_http_basic_not_form_body(self):
+        handler = build_auth_handler(
+            {
+                'type': 'oauth2',
+                'token_url': 'https://auth.example.com/token',
+                'client_id': 'id',
+                'client_secret': 'secret',
+                'client_auth_style': 'basic',
+            }
+        )
+        with patch('requests.post') as mock_post:
+            mock_post.return_value = make_response(200, {'access_token': 'tok', 'expires_in': 3600})
+            handler.apply({'headers': {}})
+        _, kwargs = mock_post.call_args
+        self.assertEqual(kwargs['auth'], ('id', 'secret'))
+        self.assertNotIn('client_id', kwargs['data'])
+        self.assertNotIn('client_secret', kwargs['data'])
+
+    def test_oauth2_password_extra_token_params_merged_into_payload(self):
+        handler = build_auth_handler(
+            {
+                'type': 'oauth2_password',
+                'token_url': 'https://auth.example.com/token',
+                'client_id': 'id',
+                'client_secret': 'secret',
+                'username': 'alice',
+                'password': 'pw',
+                'extra_token_params': {'tenant': 'corp'},
+            }
+        )
+        with patch('requests.post') as mock_post:
+            mock_post.return_value = make_response(200, {'access_token': 'tok', 'expires_in': 3600})
+            handler.apply({'headers': {}})
+        _, kwargs = mock_post.call_args
+        self.assertEqual(kwargs['data']['tenant'], 'corp')
+
+    def test_oauth2_password_client_auth_style_basic_uses_http_basic(self):
+        handler = build_auth_handler(
+            {
+                'type': 'oauth2_password',
+                'token_url': 'https://auth.example.com/token',
+                'client_id': 'id',
+                'client_secret': 'secret',
+                'username': 'alice',
+                'password': 'pw',
+                'client_auth_style': 'basic',
+            }
+        )
+        with patch('requests.post') as mock_post:
+            mock_post.return_value = make_response(200, {'access_token': 'tok', 'expires_in': 3600})
+            handler.apply({'headers': {}})
+        _, kwargs = mock_post.call_args
+        self.assertEqual(kwargs['auth'], ('id', 'secret'))
+        self.assertNotIn('client_id', kwargs['data'])
+        self.assertNotIn('client_secret', kwargs['data'])
+
 
 class TestAuthConcurrency(unittest.TestCase):
     def test_oauth2_refresh_is_coordinated(self):

@@ -37,7 +37,6 @@ def _response_bytes_for_recording(response: Any, fallback_encoding: str = 'utf-8
 _XML_DECL_RE = re.compile(
     r"^\s*<\?xml[^>]*encoding\s*=\s*(['\"])([^'\"]+)\1[^>]*\?>", re.IGNORECASE
 )
-_CHARSET_RE = re.compile(r'charset\s*=\s*([^;]+)', re.IGNORECASE)
 
 
 def detect_response_format(response: Any, configured_format: str = 'auto') -> str:
@@ -53,14 +52,6 @@ def detect_response_format(response: Any, configured_format: str = 'auto') -> st
     if content_type.startswith('text/'):
         return 'text'
     return 'bytes'
-
-
-def _charset_from_headers(response: Any) -> str | None:
-    content_type = response.headers.get('Content-Type') or ''
-    match = _CHARSET_RE.search(content_type)
-    if not match:
-        return None
-    return match.group(1).strip().strip('"').strip("'") or None
 
 
 def decode_response_text(response: Any, encoding: str) -> str:
@@ -166,11 +157,11 @@ def _decode_for_recording(response: Any, response_format: str, encoding: str | N
     if response_format == 'json':
         return content.decode('utf-8')
     if response_format == 'xml':
-        chosen = encoding or _charset_from_headers(response) or 'utf-8'
+        chosen = encoding or 'utf-8'
         text = content.decode(chosen)
         return _normalize_xml_text(text)
     if response_format in ('csv', 'text'):
-        chosen = encoding or _charset_from_headers(response) or 'utf-8'
+        chosen = encoding or 'utf-8'
         return content.decode(chosen)
     raise PlaybackError(f'unsupported textual playback format for recording: {response_format!r}')
 
