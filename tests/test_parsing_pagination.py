@@ -1249,7 +1249,7 @@ class TestNestedPathsAndDataPaths(unittest.TestCase):
 
 class TestParserArity(unittest.TestCase):
     def setUp(self):
-        from rest_fetcher.client import _parser_arity
+        from rest_fetcher._fetch_job import _parser_arity
 
         self.arity = _parser_arity
 
@@ -1286,7 +1286,7 @@ class TestParserArity(unittest.TestCase):
 
     def test_inspection_failure_defaults_to_one(self):
         "if signature cannot be inspected, fall back to 1-arg (safe default)"
-        from rest_fetcher.client import _parser_arity
+        from rest_fetcher._fetch_job import _parser_arity
 
         # builtins like len have no inspectable Python signature on some platforms
         # simulate by checking the fallback path directly

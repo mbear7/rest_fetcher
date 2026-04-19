@@ -17,8 +17,9 @@ from .exceptions import (
     StateViewMutationError,
     raise_,
 )
-from .metrics import MetricsSession, MetricsSummary
+from .metrics import EndpointMetrics, MetricsSession, MetricsSummary
 from .pagination import (
+    PaginationRunner,
     cursor_pagination,
     link_header_pagination,
     offset_pagination,
@@ -47,6 +48,7 @@ from .types import (
 __all__ = [
     'APIClient',
     'PaginationEvent',
+    'EndpointMetrics',
     'MetricsSession',
     'MetricsSummary',
     # exceptions
@@ -82,6 +84,8 @@ __all__ = [
     'StreamSummary',
     'StopSignal',
     'PageCycleOutcome',
+    # pagination runner
+    'PaginationRunner',
     # built-in pagination strategies
     'cursor_pagination',
     'link_header_pagination',

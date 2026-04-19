@@ -152,6 +152,61 @@ it to inherit.
 }
 ```
 
+### Parser-hook decision guide
+
+Both `canonical_parser` and `response_parser` let you control how a response body is interpreted, but they operate at different points in the pipeline and affect different consumers.
+
+| Hook | Input | Runs instead of built-in parsing? | Affects `next_request`? | Affects `on_response` / stream items? |
+|---|---|---|---|---|
+| `canonical_parser` | `content_bytes: bytes`, `context: dict` | Yes — replaces `response_format` parsing | Yes | Yes, indirectly (sets the value `response_parser` receives as `parsed`) |
+| `response_parser` (1-arg) | `response: requests.Response` | No (runs after) | No | Yes |
+| `response_parser` (2-arg) | `response`, `parsed: any` | No (runs after) | No | Yes — `parsed` is the already-decoded canonical body |
+
+**Use `canonical_parser` when** `next_request` needs to navigate a non-standard parsed body — for example, XML elements, protobuf objects, or a custom structure that the built-in `response_format` decoders cannot produce.
+
+**Use `response_parser` when** the built-in or canonical parsing is correct for pagination, but you want to reshape what downstream hooks (`on_response`, stream items) receive. The 2-arg form is the right choice when you need to transform the already-decoded body without re-parsing the raw bytes.
+
+```python
+# canonical_parser — XML feed: next_request can navigate an Element tree
+import xml.etree.ElementTree as ET
+
+def parse_atom(content_bytes, context):
+    return ET.fromstring(content_bytes.decode('utf-8'))
+
+client = APIClient({
+    'base_url': 'https://example.com',
+    'endpoints': {
+        'feed': {
+            'canonical_parser': parse_atom,
+            'pagination': {
+                # next_request receives the Element returned by canonical_parser
+                'next_request': lambda root, state: (
+                    {'params': {'page': state.get('page', 1) + 1}}
+                    if root.find('.//next') is not None else None
+                ),
+            },
+        }
+    }
+})
+
+# response_parser (2-arg) — pagination is fine as JSON, just extract the items list
+client = APIClient({
+    'base_url': 'https://example.com',
+    'endpoints': {
+        'users': {
+            # next_request still receives the full JSON dict
+            'response_parser': lambda resp, parsed: parsed.get('items', []),
+            'pagination': {
+                'next_request': lambda parsed, state: (
+                    {'params': {'cursor': parsed.get('next_cursor')}}
+                    if parsed.get('next_cursor') else None
+                ),
+            },
+        }
+    }
+})
+```
+
 ### Other inheriting config keys
 
 Several non-hook keys also inherit from client to endpoint:
@@ -479,11 +534,11 @@ lives and whether it inherits — not the full behavioral contract (see
 `auth` is client-level only. It applies to all endpoints uniformly.
 
 Auth config is type-dispatched: `auth.type` selects the variant, and each
-variant has its own required keys. The five variants are `bearer`, `basic`,
-`oauth2`, `oauth2_password`, and `callback`.
+variant has its own required keys. The six variants are `bearer`, `basic`,
+`api_key`, `oauth2`, `oauth2_password`, and `callback`.
 
-Fixed-shape variants (`bearer`, `basic`, `oauth2`, `oauth2_password`) have
-a known set of keys and are strictly validated. `callback` auth is
+Fixed-shape variants (`bearer`, `basic`, `api_key`, `oauth2`, `oauth2_password`)
+have a known set of keys and are strictly validated. `callback` auth is
 intentionally open-ended — extra keys are allowed because callback handlers
 may use arbitrary user-defined config fields.
 
@@ -564,12 +619,16 @@ instance. Any other value is rejected with `SchemaError`.
 
 When enabled, `client.metrics` is the `MetricsSession` object directly.
 When disabled, `client.metrics` is `None`. The session accumulates
-top-level additive totals across runs: `total_runs`, `total_failed_runs`,
+additive totals across runs: `total_runs`, `total_failed_runs`,
 `total_requests`, `total_retries`, `total_pages`, `total_bytes_received`,
 `total_retry_bytes_received`, `total_wait_seconds`, `total_elapsed_seconds`.
 
-`summary()` returns a frozen `MetricsSummary` snapshot. `reset()` atomically
-returns the pre-reset snapshot and clears counters for the next interval.
+`summary()` returns a frozen `MetricsSummary` snapshot with those grand
+totals plus `by_endpoint: dict[str, EndpointMetrics]` — a per-endpoint
+breakdown using the same fields without the `total_` prefix. The sum of any
+`EndpointMetrics` field across all keys equals the corresponding grand total.
+Runs with no endpoint name bucket under `'<unknown>'`. `reset()` atomically
+returns the pre-reset snapshot and clears all counters and buckets.
 
 Users may pass `metrics: MetricsSession()` to share one session across
 multiple clients.

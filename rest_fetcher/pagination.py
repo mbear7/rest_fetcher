@@ -27,11 +27,15 @@ from .strategies import (
 )
 from .types import PageCycleOutcome, StopSignal
 
-# Re-export built-in strategies so existing code that imports from this module
-# continues to work after the strategies/engine split.
+# Transitional compatibility re-exports — prefer rest_fetcher.strategies for new code.
+# CycleRunner and build_cycle_runner are aliases kept for backward compatibility;
+# the canonical names are PaginationRunner and build_pagination_runner.
 __all__ = [
-    'CycleRunner',
+    'PaginationRunner',
     'StateView',
+    'build_pagination_runner',
+    # compatibility aliases — not removed yet
+    'CycleRunner',
     'build_cycle_runner',
     # strategies
     'cursor_pagination',
@@ -54,7 +58,7 @@ logger = logging.getLogger('rest_fetcher.pagination')
 
 
 class _RunStateLike(Protocol):
-    """Internal run-state contract consumed by CycleRunner."""
+    """Internal run-state contract consumed by PaginationRunner."""
 
     page_state: dict[str, Any]
     event_source: EventSource
@@ -118,6 +122,34 @@ def _event_source(run_state: _RunStateLike | None) -> EventSource:
     if source not in ('live', 'playback'):
         raise RuntimeError(f'unexpected event_source: {source!r}')
     return source
+
+
+def _cb_call(
+    fn: Any,
+    *args: Any,
+    name: str,
+    run_state: _RunStateLike | None,
+    url: str | None,
+) -> Any:
+    """Call a pagination callback via safe_call, emitting a callback_error event on failure."""
+    try:
+        return safe_call(fn, *args, name=name)
+    except CallbackError as exc:
+        if run_state is not None:
+            run_state.emit_event(
+                now_event(
+                    kind='callback_error',
+                    source=_event_source(run_state),
+                    endpoint=run_state.endpoint_name,
+                    url=url,
+                    data={
+                        'callback': name,
+                        'exception_type': type(exc).__name__,
+                        'exception_msg': str(exc),
+                    },
+                )
+            )
+        raise
 
 
 def _copy_request_for_snapshot(request: dict[str, Any]) -> dict[str, Any]:
@@ -201,7 +233,7 @@ class StateView(dict[str, Any]):
         self._raise_mutation('(clear)')
 
 
-class CycleRunner:
+class PaginationRunner:
     """
     orchestrates the pagination loop for a single FetchJob.
     constructed from the resolved pagination config dict.
@@ -403,48 +435,27 @@ class CycleRunner:
                 run_state.expose(page_state)
             state = StateView(page_state)
 
+            _post_url = post_auth_request.get('url')
             if self._on_response:
-                try:
-                    page_data = safe_call(
-                        self._on_response, page_payload, state, name='on_response'
-                    )
-                except CallbackError as exc:
-                    if run_state is not None:
-                        run_state.emit_event(
-                            now_event(
-                                kind='callback_error',
-                                source=_event_source(run_state),
-                                endpoint=run_state.endpoint_name,
-                                url=post_auth_request.get('url'),
-                                data={
-                                    'callback': 'on_response',
-                                    'exception_type': type(exc).__name__,
-                                    'exception_msg': str(exc),
-                                },
-                            )
-                        )
-                    raise
+                page_data = _cb_call(
+                    self._on_response,
+                    page_payload,
+                    state,
+                    name='on_response',
+                    run_state=run_state,
+                    url=_post_url,
+                )
             else:
                 page_data = page_payload
 
-            try:
-                safe_call(self._on_page, page_data, state, name='on_page')
-            except CallbackError as exc:
-                if run_state is not None:
-                    run_state.emit_event(
-                        now_event(
-                            kind='callback_error',
-                            source=_event_source(run_state),
-                            endpoint=run_state.endpoint_name,
-                            url=post_auth_request.get('url'),
-                            data={
-                                'callback': 'on_page',
-                                'exception_type': type(exc).__name__,
-                                'exception_msg': str(exc),
-                            },
-                        )
-                    )
-                raise
+            _cb_call(
+                self._on_page,
+                page_data,
+                state,
+                name='on_page',
+                run_state=run_state,
+                url=_post_url,
+            )
 
             if all_pages is not None:
                 all_pages.append(page_data)
@@ -452,26 +463,14 @@ class CycleRunner:
                 yield page_data
 
             if self._update_state:
-                try:
-                    updated = safe_call(
-                        self._update_state, page_payload, state, name='update_state'
-                    )
-                except CallbackError as exc:
-                    if run_state is not None:
-                        run_state.emit_event(
-                            now_event(
-                                kind='callback_error',
-                                source=_event_source(run_state),
-                                endpoint=run_state.endpoint_name,
-                                url=post_auth_request.get('url'),
-                                data={
-                                    'callback': 'update_state',
-                                    'exception_type': type(exc).__name__,
-                                    'exception_msg': str(exc),
-                                },
-                            )
-                        )
-                    raise
+                updated = _cb_call(
+                    self._update_state,
+                    page_payload,
+                    state,
+                    name='update_state',
+                    run_state=run_state,
+                    url=_post_url,
+                )
                 # update_state is the one callback allowed to persist values across pages.
                 # it returns a dict to merge into the live run-local page_state.
                 if isinstance(updated, dict) and updated:
@@ -513,24 +512,14 @@ class CycleRunner:
                 if _cycle_stop is not None:
                     _adaptive_delay_s = None
 
-            try:
-                overrides = safe_call(self._next_request, parsed_body, state, name='next_request')
-            except CallbackError as exc:
-                if run_state is not None:
-                    run_state.emit_event(
-                        now_event(
-                            kind='callback_error',
-                            source=_event_source(run_state),
-                            endpoint=run_state.endpoint_name,
-                            url=request.get('url'),
-                            data={
-                                'callback': 'next_request',
-                                'exception_type': type(exc).__name__,
-                                'exception_msg': str(exc),
-                            },
-                        )
-                    )
-                raise
+            overrides = _cb_call(
+                self._next_request,
+                parsed_body,
+                state,
+                name='next_request',
+                run_state=run_state,
+                url=request.get('url'),
+            )
 
             if overrides is None:
                 stop = StopSignal(kind='next_request_none')
@@ -607,24 +596,14 @@ class CycleRunner:
         final_state = StateView(final_page_state)
 
         if mode == 'fetch' and all_pages is not None:
-            try:
-                result = safe_call(self._on_complete, all_pages, final_state, name='on_complete')
-            except CallbackError as exc:
-                if run_state is not None:
-                    run_state.emit_event(
-                        now_event(
-                            kind='callback_error',
-                            source=_event_source(run_state),
-                            endpoint=run_state.endpoint_name,
-                            url=request.get('url'),
-                            data={
-                                'callback': 'on_complete',
-                                'exception_type': type(exc).__name__,
-                                'exception_msg': str(exc),
-                            },
-                        )
-                    )
-                raise
+            result = _cb_call(
+                self._on_complete,
+                all_pages,
+                final_state,
+                name='on_complete',
+                run_state=run_state,
+                url=request.get('url'),
+            )
             yield (result if result is not None else all_pages)
             return
 
@@ -634,6 +613,11 @@ class CycleRunner:
         # callback invocation to that outer layer.
 
 
-def build_cycle_runner(pagination_config: dict[str, Any] | None) -> CycleRunner:
-    """Build a CycleRunner from a pagination config dict."""
-    return CycleRunner(pagination_config)
+def build_pagination_runner(pagination_config: dict[str, Any] | None) -> PaginationRunner:
+    """Build a PaginationRunner from a pagination config dict."""
+    return PaginationRunner(pagination_config)
+
+
+# Compatibility aliases — kept for backward compatibility; prefer the canonical names above.
+CycleRunner = PaginationRunner
+build_cycle_runner = build_pagination_runner

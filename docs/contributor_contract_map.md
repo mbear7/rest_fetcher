@@ -3,6 +3,38 @@ Contributor Contract Map
 
 This note is maintainer-facing. It records core invariants and fragile areas that are easy to damage with seemingly local cleanups.
 
+API surface
+-----------
+
+Every exported or compatibility name should have an explicit status. When adding a new name, decide its status before merging.
+
+| Name | Status | Notes |
+|---|---|---|
+| `APIClient` | **public** | Package root. Primary entry point. |
+| `PaginationEvent` | **public** | Package root. Stable event dataclass. |
+| `PaginationRunner` | **public** | Package root + `rest_fetcher.pagination`. Canonical engine name since 0.5.x. |
+| `cursor_pagination` | **public** | Package root. |
+| `link_header_pagination` | **public** | Package root. |
+| `url_header_pagination` | **public** | Package root. |
+| `offset_pagination` | **public** | Package root. |
+| `page_number_pagination` | **public** | Package root. |
+| `MetricsSession` | **public** | Package root. |
+| `MetricsSummary` | **public** | Package root. |
+| `EndpointMetrics` | **public** | Package root. |
+| `validate` | **public** | Package root. Schema validation entry point. |
+| `SchemaBuilder` | **public** | Package root. Optional fluent builder; zero runtime cost. |
+| `ClientSchema`, `EndpointSchema`, `PaginationConfig`, `RateLimitConfig`, `RetryConfig`, `AuthConfig` | **public** | Package root. Optional TypedDicts for IDE/mypy. |
+| `OnErrorFn`, `OnEventFn`, `OnPageCompleteFn`, `OnRequestFn` | **public** | Package root. Callback protocol types. |
+| `StreamRun`, `StreamSummary`, `StopSignal`, `PageCycleOutcome` | **public** | Package root. |
+| All exceptions (`RestFetcherError`, `SchemaError`, …, `raise_`) | **public** | Package root. |
+| `build_pagination_runner` | **public (submodule only)** | `rest_fetcher.pagination`. Canonical factory. Intentionally not promoted to package root. |
+| `CycleRunner` | **compatibility** | `rest_fetcher.pagination` only. Alias for `PaginationRunner`. Do not add new uses; do not remove until a deprecation cycle is complete. |
+| `build_cycle_runner` | **compatibility** | `rest_fetcher.pagination` only. Alias for `build_pagination_runner`. Same policy as `CycleRunner`. |
+| `_FetchJob` | **internal** | `rest_fetcher._fetch_job`. Not for external use. |
+| `_RunState` | **internal** | `rest_fetcher._run_state`. Not for external use. |
+| `_scrub`, `_scrub_recorded_url` | **internal** | `rest_fetcher.playback`. Not for external use. |
+| `_UNKNOWN_ENDPOINT` | **internal** | `rest_fetcher.metrics`. Sentinel string; test via observable behavior, not by importing it. |
+
 Core invariants
 ---------------
 
@@ -26,14 +58,24 @@ Core invariants
    - It returns the pre-reset totals and clears the session state.
    - Runs that finish later record into the fresh post-reset state.
 
+6. `by_endpoint` sum equals grand totals.
+   - For every scalar field on `EndpointMetrics`, the sum across `MetricsSummary.by_endpoint.values()` equals the corresponding `total_*` field on `MetricsSummary`.
+   - Runs with `endpoint=None` are bucketed under `'<unknown>'`, not silently dropped.
+   - Do not record to the grand-total counters without also recording to the per-endpoint bucket, and vice versa.
+
+7. `_FetchJob` owns per-call execution; `APIClient` owns shared state.
+   - `APIClient` owns: the `requests.Session`, auth handler, retry handler, shared token bucket, playback handler, metrics session, and the four public fetch methods (`fetch`, `fetch_pages`, `stream`, `stream_run`).
+   - `_FetchJob` owns: request building, retry loop, rate-limit wait, event emission, and `StreamSummary` construction for one call.
+   - Per-call logic belongs in `_FetchJob`. Logic that spans calls or manages shared resources belongs in `APIClient`.
+
 Config semantics that are easy to forget
 ----------------------------------------
 
 1. Be explicit about merge vs replace.
    - `headers` and `params` are merged by scope.
-   - `rate_limit`, `pagination`, and `canonical_parser` are replacement-style overrides.
-  - `retry` is merge-style: endpoint retry dictionaries override only the specified keys, and `retry: None` disables inherited retry for that endpoint.
-  - `pagination` is replacement-style: endpoint pagination replaces inherited client pagination rather than merging field-by-field.
+   - `rate_limit` and `canonical_parser` are replacement-style overrides.
+   - `retry` is merge-style: endpoint retry dictionaries override only the specified keys; `retry: None` disables inherited retry for that endpoint.
+   - `pagination` is merge-style: endpoint pagination merges over client-level defaults (`merge_dicts`). Endpoint `None` explicitly disables; omitting inherits the client default.
    - Explicit `None` can be a meaningful disable, not just "missing".
 
 2. `rate_limit` mixes proactive and reactive controls.
@@ -59,6 +101,24 @@ Intentional mode differences
    - Valid values are `live` and `playback`.
    - Invalid internal values should fail loudly.
 
+Execution-mode contracts
+------------------------
+
+1. `fetch()` vs `fetch_pages()` differ in two ways, not one.
+   - Return shape: `fetch()` unwraps single-page results to the bare page value; `fetch_pages()` always returns a list, regardless of page count.
+   - `on_complete` semantics: in `fetch()`, the return value of `on_complete` becomes the final return value of `fetch()` — it can transform the data. In `fetch_pages()`, `on_complete` follows stream semantics: it fires with `(StreamSummary, state)` but its return value is ignored. Do not silently widen the `on_complete` contract in one mode without auditing the other.
+
+2. `canonical_parser` and `response_parser` hook at different pipeline points.
+   - `canonical_parser(content_bytes, context)` replaces built-in format parsing entirely. Its output is what pagination callbacks (`next_request`) and `response_parser` see. Use it when the API's wire format is not natively handled or when custom parsing must influence pagination.
+   - `response_parser(response)` or `response_parser(response, parsed)` runs after canonical or built-in parsing. It reshapes what downstream hooks (`on_response`, stream items) receive without affecting pagination. The 2-arg form receives the already-decoded body as `parsed`.
+   - Do not swap their roles: a `canonical_parser` that only reshapes data will silently break `next_request`; a `response_parser` that tries to drive pagination will have no effect on it.
+
+3. `validate()` strict mode controls unknown-key handling only.
+   - `strict=True` (the default): unknown keys in any config dict raise `SchemaError`. All unknown-key issues are collected before raising, so the caller sees the full list at once.
+   - `strict=False`: unknown keys emit `SchemaValidationWarning` instead of raising.
+   - In both modes, type errors, missing required fields, and other semantic checks still fail immediately on the first problem encountered. The strict flag does not suppress those.
+   - `APIClient.__init__` calls `validate()` with `strict=True` by default. Do not add per-key strict carve-outs without updating the schema guide.
+
 Callbacks: public behavior vs internal details
 ----------------------------------------------
 
@@ -69,7 +129,7 @@ Callbacks: public behavior vs internal details
    - Example: `on_request=None` suppresses inherited client-level `on_request`.
 
 3. Be careful when changing callback firing boundaries.
-   - `on_complete` behavior differs between clean completion and failure paths.
+   - `on_complete` fires inside `PaginationRunner.run()`, after all pages are collected, before `StreamSummary` is constructed. Metrics recording happens after `on_complete` returns; a raising `on_complete` counts as a failed run.
    - Do not widen callback firing surfaces casually.
 
 Fragile implementation seams
@@ -82,8 +142,8 @@ Fragile implementation seams
      outcome/signal construction, `CallbackError` for invalid returns) but intentionally does not
      raise — each caller uses its own appropriate raise form.
 
-2. `client.py` and `pagination.py` communicate through a private run-state contract.
-   - Keep the contract aligned with what `CycleRunner` actually consumes.
+2. `_fetch_job.py` and `pagination.py` communicate through a private run-state contract.
+   - Keep the contract aligned with what `PaginationRunner` actually consumes.
    - Small protocol/type comments are preferable to broad refactors here.
 
 3. Shared live/playback request-cycle handling should stay focused.
@@ -93,7 +153,7 @@ Fragile implementation seams
 
 4. `_rf_pagination_helper` is a private three-way protocol.
    - Built-in strategies tag their pagination-config dicts with `'_rf_pagination_helper': True`.
-   - `_FetchJob._resolve_config` in `client.py` inspects this tag to extract strategy-provided
+   - `_FetchJob._resolve_config` in `_fetch_job.py` inspects this tag to extract strategy-provided
      lifecycle hooks without requiring separate config keys.
    - `schema.py`'s `_validate_pagination` skips unknown-key checks for tagged dicts.
    - Third-party strategies must not use this tag. It is internal to the library.
@@ -105,6 +165,7 @@ Before merging changes in request execution, callbacks, summaries, metrics, retr
 
 - Does this preserve one terminal summary per run?
 - Does metrics aggregation still consume the canonical summary rather than recomputing totals?
+- Does `by_endpoint` still sum to grand totals for every scalar field?
 - Did any override semantics silently change from merge to replace, or vice versa?
 - Did any callback fire in a path where it previously did not?
 - Did any change alter live/mock/playback parity intentionally or accidentally?

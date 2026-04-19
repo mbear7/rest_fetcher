@@ -8,7 +8,7 @@ from .metrics import MetricsSession
 from .parsing import VALID_RESPONSE_FORMATS
 
 # valid values for fields with a fixed set of options
-_VALID_AUTH_TYPES = {'bearer', 'basic', 'oauth2', 'oauth2_password', 'callback'}
+_VALID_AUTH_TYPES = {'bearer', 'basic', 'api_key', 'oauth2', 'oauth2_password', 'callback'}
 _VALID_METHODS = {'GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'}
 _VALID_BACKOFF = {'exponential', 'linear'}
 _VALID_JITTER = {'full', 'equal'}
@@ -99,6 +99,15 @@ def _validate_on_event_kinds(value, path):
     _err(path, f'expected None, str, or collection of strings, got {type(value).__name__!r}')
 
 
+def _validate_oauth2_extensions(auth, path):
+    if 'client_auth_style' in auth:
+        _check_one_of(auth['client_auth_style'], {'body', 'basic'}, f'{path}.client_auth_style')
+    if 'token_headers' in auth and auth['token_headers'] is not None:
+        _check_type(auth['token_headers'], dict, f'{path}.token_headers')
+    if 'extra_token_params' in auth and auth['extra_token_params'] is not None:
+        _check_type(auth['extra_token_params'], dict, f'{path}.extra_token_params')
+
+
 def _validate_auth(auth, path='auth', strict=False, _stacklevel=3, _errors=None):
     _check_type(auth, dict, path)
 
@@ -113,6 +122,21 @@ def _validate_auth(auth, path='auth', strict=False, _stacklevel=3, _errors=None)
         if 'token_callback' in auth:
             _check_callable(auth['token_callback'], f'{path}.token_callback')
 
+    elif auth_type == 'api_key':
+        if 'in' not in auth:
+            _err(path, 'api_key auth requires "in" ("header" or "query")')
+        _check_one_of(auth.get('in', ''), {'header', 'query'}, f'{path}.in')
+        if 'name' not in auth:
+            _err(path, 'api_key auth requires "name" (header or query param name)')
+        has_value = 'value' in auth
+        has_callback = 'value_callback' in auth
+        if has_value and has_callback:
+            _err(path, 'api_key auth: "value" and "value_callback" are mutually exclusive')
+        if not has_value and not has_callback:
+            _err(path, 'api_key auth requires either "value" (str) or "value_callback" (callable)')
+        if has_callback:
+            _check_callable(auth['value_callback'], f'{path}.value_callback')
+
     elif auth_type == 'basic':
         for key in ('username', 'password'):
             if key not in auth:
@@ -122,11 +146,13 @@ def _validate_auth(auth, path='auth', strict=False, _stacklevel=3, _errors=None)
         for key in ('token_url', 'client_id', 'client_secret'):
             if key not in auth:
                 _err(path, f'oauth2 auth requires "{key}"')
+        _validate_oauth2_extensions(auth, path)
 
     elif auth_type == 'oauth2_password':
         for key in ('token_url', 'client_id', 'client_secret', 'username', 'password'):
             if key not in auth:
                 _err(path, f'oauth2_password auth requires "{key}"')
+        _validate_oauth2_extensions(auth, path)
 
     elif auth_type == 'callback':
         if 'handler' not in auth:
@@ -549,16 +575,27 @@ _KNOWN_PAGINATION_KEYS = {'next_request', 'delay', 'initial_params', '_rf_pagina
 # lifecycle hooks that were moved from pagination to endpoint level.
 # rejected with targeted redirecting messages in both strict and non-strict modes.
 _MOVED_PAGINATION_KEYS = {
-    'on_response': 'on_response',
-    'on_page': 'on_page',
-    'on_complete': 'on_complete',
-    'on_page_complete': 'on_page_complete',
-    'update_state': 'update_state',
+    'on_response',
+    'on_page',
+    'on_complete',
+    'on_page_complete',
+    'update_state',
 }
 _KNOWN_AUTH_KEYS = {
     'bearer': {'type', 'token', 'token_callback'},
     'basic': {'type', 'username', 'password'},
-    'oauth2': {'type', 'token_url', 'client_id', 'client_secret', 'scope', 'expiry_margin'},
+    'api_key': {'type', 'in', 'name', 'value', 'value_callback', 'prefix'},
+    'oauth2': {
+        'type',
+        'token_url',
+        'client_id',
+        'client_secret',
+        'scope',
+        'expiry_margin',
+        'token_headers',
+        'extra_token_params',
+        'client_auth_style',
+    },
     'oauth2_password': {
         'type',
         'token_url',
@@ -568,6 +605,9 @@ _KNOWN_AUTH_KEYS = {
         'password',
         'scope',
         'expiry_margin',
+        'token_headers',
+        'extra_token_params',
+        'client_auth_style',
     },
     'callback': {'type', 'handler'},
 }

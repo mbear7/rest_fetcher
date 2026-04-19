@@ -12,13 +12,13 @@ _Python ETL library for fetching data from REST APIs_
 | `schema.py` | `validate()` `merge_dicts()` `resolve_endpoint()` | Schema validation, deep dict merge, resolves client + endpoint config into one dict. |
 | `auth.py` | `build_auth_handler()` `BearerAuth` / `BasicAuth` / `OAuth2Auth` / `OAuth2PasswordAuth` / `CallbackAuth` | Auth handlers. OAuth2 caches token and auto-refreshes before expiry. |
 | `retry.py` | `RetryHandler` `build_retry_handler()` | Retry with backoff, Retry-After header parsing, min delay between requests. |
-| `pagination.py` | `CycleRunner` `build_cycle_runner()` 5 built-in strategies | Pagination loop orchestration. Built-in: offset, cursor, link_header, page_number, url_header. |
+| `pagination.py` | `PaginationRunner` `build_pagination_runner()` 5 built-in strategies (`CycleRunner`/`build_cycle_runner` compat aliases) | Pagination loop orchestration. Built-in: offset, cursor, link_header, page_number, url_header. |
 | `context.py` | `OperationContext` | Per-call safety caps. Tracks `started_at`, `request_count`, `page_count`. Holds `max_pages`, `max_requests`, `time_limit` limits. |
 | `playback.py` | `PlaybackHandler` `build_playback_handler()` | Save real API responses to file and replay them. Three modes: auto, save, load. |
 | `client.py` | `APIClient` `_FetchJob` `_StreamRunImpl` | Public entry point. `APIClient` owns session, auth, retry. `_FetchJob` runs one fetch operation. `_StreamRunImpl` is the wrapper returned by `stream_run()`. |
-| `metrics.py` | `MetricsSession` `MetricsSummary` | Optional client-level cumulative metrics session. Thread-safe top-level totals across runs. |
+| `metrics.py` | `MetricsSession` `MetricsSummary` `EndpointMetrics` | Optional client-level cumulative metrics session. Thread-safe. Grand totals plus per-endpoint breakdown via `MetricsSummary.by_endpoint`. |
 | `types.py` | TypedDicts + `SchemaBuilder` | Optional typing layer. TypedDicts for IDE autocompletion and mypy. `SchemaBuilder` is a fluent builder that returns plain dicts. Zero runtime cost if unused. |
-| `tests/` | ~600 tests (unit + scenario) | Full test suite. No network calls — all HTTP intercepted via mock. Run: `pytest -q` |
+| `tests/` | ~700 tests (unit + scenario) | Full test suite. No network calls — all HTTP intercepted via mock. Run: `pytest -q` |
 | `examples/` | Runnable scripts | `examples.py`, `atom_example.py`, `events_rate_limit_example.py`, `glpi_example.py`, `anthropic_example.py`, `booze_example.py`, `nager_example.py`, `whoisjson_example.py`, `case_studies/pcal_example.py`. Live-API scripts require real credentials. |
 
 ---
@@ -29,11 +29,11 @@ _Python ETL library for fetching data from REST APIs_
 
 &nbsp;&nbsp;&nbsp;&nbsp;└─ **`_FetchJob`** — created per call by `fetch()`, `stream()`, or `stream_run()`. Never reused. Runs the full pipeline for one endpoint call.
 
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ **`CycleRunner`** — drives the page loop inside `_FetchJob`. Created from the resolved pagination config.
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ **`PaginationRunner`** — drives the page loop inside `_FetchJob`. Created from the resolved pagination config. (`CycleRunner` is a compatibility alias.)
 
 **`_StreamRunImpl`** — returned by `stream_run()`. Wraps the `_FetchJob` generator and exposes `run.summary` (`StreamSummary | None`) after exhaustion.
 
-**`MetricsSession`** — optional, owned by `APIClient` when `metrics` is enabled. Accumulates top-level totals across runs. Thread-safe. Exposes `summary()` and `reset()`.
+**`MetricsSession`** — optional, owned by `APIClient` when `metrics` is enabled. Thread-safe. `summary()` returns a frozen `MetricsSummary` with grand totals (`total_runs`, `total_requests`, `total_pages`, `total_retries`, `total_bytes_received`, `total_wait_seconds`, `total_elapsed_seconds`, `total_failed_runs`) plus `by_endpoint: dict[str, EndpointMetrics]` — a per-endpoint breakdown with the same fields (unprefixed). `reset()` atomically flushes and clears.
 
 ---
 
@@ -46,7 +46,7 @@ _Python ETL library for fetching data from REST APIs_
 | Key | Description |
 |---|---|
 | `base_url` | **Required.** Base URL for all endpoints, e.g. `"https://api.example.com/v1"` |
-| `auth` | Auth config dict. Keys: `type` (`bearer`\|`basic`\|`oauth2`\|`oauth2_password`\|`callback`) + type-specific keys. See §3.3. |
+| `auth` | Auth config dict. Keys: `type` (`bearer`\|`basic`\|`api_key`\|`oauth2`\|`oauth2_password`\|`callback`) + type-specific keys. See §3.3. |
 | `retry` | Retry config dict. Keys: `max_attempts` (default 3), `backoff` (`exponential`\|`linear`\|callable, default `exponential`), `on_codes` (default `[429,500,502,503,504]`), `base_delay` (default 1.0s), `max_delay` (default 120s), `jitter` (`false`\|`true`/`"full"`\|`"equal"`), `max_retry_after` (float, optional — raise `RateLimitError` instead of waiting when `Retry-After` exceeds this value), `reactive_wait_on_terminal` (bool, default `False` — honour `Retry-After` / `min_delay` even on non-retried terminal HTTP errors). Jitter applies only to computed backoff, not `Retry-After` or reactive `min_delay`. |
 | `rate_limit` | Rate limit config dict. Controls both proactive token-bucket limiting and reactive Retry-After behaviour. See §3.1a. |
 | `on_event` | `Callable(PaginationEvent) → None`. Lifecycle event hook for telemetry. Overridable per endpoint. Exceptions swallowed; run continues. |
@@ -58,13 +58,18 @@ _Python ETL library for fetching data from REST APIs_
 | `log_level` | `none` \| `error` \| `medium` \| `verbose`. Default: `medium`. |
 | `response_parser` | 1-arg `(response) → any`: full control, no pre-decoding. 2-arg `(response, parsed) → any`: library pre-decodes per `response_format` first (JSON value, str, Element, CSV rows, bytes, or None for empty). Arity detected once at construction via `inspect.signature`. |
 | `canonical_parser` | Optional: `Callable(content_bytes, context) → any`. Runs *instead of* built-in `response_format` parsing; return becomes `parsed_body` for `next_request`. Generic extension point for custom non-JSON parsing. See §3.1b. |
+
+> **Which parser hook should I use?**
+> Use `canonical_parser` when pagination (`next_request`) needs to see a non-standard parsed body — it runs first and sets the canonical form.
+> Use `response_parser` when built-in or canonical parsing is fine for pagination, but you want to reshape the page payload that `on_response` and stream items receive.
+> `response_parser` (2-arg form) receives the already-parsed canonical body as its second argument.
 | `endpoints` | **Required.** Dict of `endpoint_name → endpoint config dict`. |
 | `state` | Dict used in two ways: auth reads it as read-only config, and each run gets a copied seed for callback-visible state. Use for secrets, tokens, region config. Auth runtime caches do not live here. |
 | `session_config` | Dict of `requests.Session` settings: `verify` (bool or CA bundle path), `cert` (client cert path or `(cert, key)` tuple), `proxies` (scheme → URL dict), `max_redirects` (int, default 30). Unrecognised keys raise `SchemaError`. |
 | `scrub_headers` | List of extra header names (str) to redact in logs and playback fixtures. On top of built-in defaults (`Authorization`, `X-Api-Key`, `X-Auth-Token`, etc.) and pattern matching (any key containing: `token`, `secret`, `password`, `key`, `auth`). |
 | `scrub_query_params` | List of extra query param names (str) to redact in recorded URLs in playback fixtures. On top of built-in defaults (`access_token`, `api_key`, `token`, `client_secret`, etc.) and pattern matching (any param containing: `token`, `secret`, `key`, `sig`, `auth`). |
 | `timeout` | **IMPORTANT:** `requests` has no default timeout and will hang indefinitely without one. Always set this. Single float: applies to connect + read. Tuple `(connect, read)`: separate timeouts, e.g. `(5, 60)`. |
-| `metrics` | Optional client metrics session. Accepts `True` (construct a default `MetricsSession`), `False` / `None` / omitted (disabled), or an explicit `MetricsSession()` instance. When enabled, `client.metrics.summary()` returns top-level cumulative totals and `client.metrics.reset()` atomically flushes-and-clears them. |
+| `metrics` | Optional client metrics session. Accepts `True` (construct a default `MetricsSession`), `False` / `None` / omitted (disabled), or an explicit `MetricsSession()` instance (to share across clients). When enabled, `client.metrics.summary()` returns a `MetricsSummary` with grand totals and a `by_endpoint: dict[str, EndpointMetrics]` per-endpoint breakdown. `client.metrics.reset()` atomically flushes-and-clears. |
 | `response_format` | Default response format for all endpoints. `auto` \| `json` \| `text` \| `xml` \| `csv` \| `bytes`. Default: `auto` (infer from Content-Type). Overridable per endpoint and per call. |
 | `csv_delimiter` | Default CSV column separator for all endpoints. Single character. Default: `';'`. Overridable per endpoint and per call. |
 | `encoding` | Default text-layer encoding for textual responses (`text`, `csv`). Codec name. Default: `'utf-8'`. Overridable per endpoint and per call. |
@@ -153,8 +158,9 @@ The `context` argument passed to `canonical_parser(content_bytes, context)` cont
 |---|---|
 | `bearer` | `token` (str) OR `token_callback` (callable(config) → str) |
 | `basic` | `username` (str), `password` (str) |
-| `oauth2` | `token_url`, `client_id`, `client_secret`. Optional: `scope`, `expiry_margin` (default 60s). |
-| `oauth2_password` | `token_url`, `client_id`, `client_secret`, `username`, `password`. Optional: `scope`, `expiry_margin` (default 60s). Password grant flow for APIs requiring user identity (e.g. GLPI v2). |
+| `api_key` | `in` (`'header'` or `'query'`), `name` (header/param name), `value` (str) OR `value_callback` (callable(config) → str). Optional: `prefix` (str prepended to value). |
+| `oauth2` | `token_url`, `client_id`, `client_secret`. Optional: `scope`, `expiry_margin` (default 60s), `client_auth_style` (`'body'`/`'basic'`), `extra_token_params` (dict), `token_headers` (dict). |
+| `oauth2_password` | `token_url`, `client_id`, `client_secret`, `username`, `password`. Optional: `scope`, `expiry_margin`, `client_auth_style`, `extra_token_params`, `token_headers`. |
 | `callback` | `handler`: `callable(request_kwargs, config) → request_kwargs` |
 
 ### 3.4 Pagination config
@@ -410,7 +416,7 @@ from rest_fetcher import SchemaBuilder
 
 schema = (
     SchemaBuilder('https://api.example.com/v1')
-    .bearer('my-token')       # or .basic(), .oauth2(), .oauth2_password(), .auth_callback()
+    .bearer('my-token')       # or .basic(), .api_key(), .oauth2(), .oauth2_password(), .auth_callback()
     .timeout(30)              # always set — requests has no default timeout
     .retry(max_attempts=3)
     .state(api_key='secret')  # read-only auth config + initial run-state seed
@@ -427,8 +433,9 @@ client = APIClient(schema)    # identical to passing a hand-written dict
 |---|---|
 | `.bearer(token \| callable)` | Bearer auth. Pass str for static token, `callable(config)→str` for dynamic. |
 | `.basic(username, password)` | HTTP Basic auth. |
-| `.oauth2(token_url, client_id, client_secret)` | OAuth2 client credentials. Optional: `scope`, `expiry_margin`. |
-| `.oauth2_password(token_url, client_id, client_secret, username, password)` | OAuth2 password grant. Optional: `scope`, `expiry_margin`. For APIs requiring user identity alongside client credentials (e.g. GLPI v2). |
+| `.api_key(name, value=None, *, in_='header', prefix=None, value_callback=None)` | API-key auth. `name`: header or query param name. `in_`: `'header'` (default) or `'query'`. `value` or `value_callback` required (mutually exclusive). `prefix` prepended to value. |
+| `.oauth2(token_url, client_id, client_secret)` | OAuth2 client credentials. Optional: `scope`, `expiry_margin`, `client_auth_style` (`'body'`/`'basic'`), `extra_token_params`, `token_headers`. |
+| `.oauth2_password(token_url, client_id, client_secret, username, password)` | OAuth2 password grant. Optional: `scope`, `expiry_margin`, `client_auth_style`, `extra_token_params`, `token_headers`. For APIs requiring user identity (e.g. GLPI v2). |
 | `.auth_callback(handler)` | Fully custom auth: `handler(request_kwargs, state) → request_kwargs`. |
 | `.timeout(n \| (connect, read))` | Always set. Single float or `(connect, read)` tuple. |
 | `.session_config(verify, cert, proxies, max_redirects)` | Configure `requests.Session`: TLS verification, client certs, proxies, redirect limit. All params optional. |
@@ -734,7 +741,7 @@ with APIClient(schema) as client:
 | `OAuth2Auth` / `OAuth2PasswordAuth` | Caches token + expiry on the handler instance. Safe for sequential (single-threaded) use. In a multithreaded context two threads could race to refresh — not a concern for typical Airflow ETL tasks. |
 | `RetryHandler` | Tracks a monotonic `_last_request_tick` for `min_delay`. Stateful but safe for sequential use. |
 | `_FetchJob` | Created fresh per call by `APIClient`. Never reused. `mock_idx` and per-call state are isolated. |
-| `CycleRunner` | Created fresh per `_FetchJob`. State dict is local to one fetch operation. |
+| `PaginationRunner` | Created fresh per `_FetchJob`. State dict is local to one fetch operation. |
 
 - For Airflow ETL — sequential tasks, single thread — `APIClient` is fully reusable without any caveats.
 - Do not share one `APIClient` instance across parallel Airflow tasks if using OAuth2 auth — create one client per task instead.

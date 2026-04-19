@@ -39,7 +39,7 @@ pip install -e .
   Supports retry policies, reactive `Retry-After` handling, and proactive token-bucket throttling with `requests_per_second` and `burst`.
 
 - **Authentication support for common API setups**  
-  Includes bearer token, basic auth, OAuth2 client credentials, OAuth2 password grant, and custom auth callbacks.
+  Includes bearer token, basic auth, API-key (header or query param), OAuth2 client credentials, OAuth2 password grant, and custom auth callbacks.
 
 - **Lifecycle telemetry via `on_event`**  
   Emits structured runtime events for request, retry, parse, callback-error, stop, playback, and rate-limit behavior. `PaginationEvent.to_dict()` returns a stable, JSON-serializable dict for ETL audit logging.
@@ -134,11 +134,18 @@ For IDE autocompletion and mypy support, annotate raw dict schemas with `ClientS
 | `csv` | `list[dict[str, str]]` via `csv.DictReader`; uses `csv_delimiter` (default `;`) and `encoding`. |
 | `bytes` | Raw `bytes`. |
 
-For custom parsing, use `canonical_parser(content_bytes, context)` to convert raw bytes
-into any canonical form before pagination and callbacks run. See `examples/atom_example.py`
-for a small XML reference and `examples/case_studies/pcal_example.py` for a fuller lxml/XPath
-example. The 2-arg `response_parser(response, parsed)` receives the canonical parsed body
-as its second argument.
+For custom parsing, two hooks are available — pick by what you need to change:
+
+- **`canonical_parser(content_bytes, context)`** — replaces built-in format parsing entirely.
+  Use this when `next_request` or other pagination callbacks need a non-standard parsed body
+  (e.g. XML, protobuf, a custom structure). Its return value becomes the canonical `parsed_body`
+  that `next_request` receives.
+- **`response_parser(response[, parsed])`** — reshapes what downstream hooks receive, without
+  touching what `next_request` sees. Use this when the built-in or canonical parsing is fine
+  for pagination, but you want to transform the page payload before `on_response` / stream items.
+
+See `examples/atom_example.py` for a `canonical_parser` XML reference and
+`examples/case_studies/pcal_example.py` for a fuller lxml/XPath example.
 
 ```python
 client.fetch('feed', response_format='xml')
@@ -176,7 +183,27 @@ See `docs/schema_guide.md` for the config ownership model, `docs/semantics.md` f
 behavioral contracts, `docs/cheatsheet.md` for a compact reference, and
 `examples/examples.py` for more patterns.
 
-## OAuth2 auth modes
+## Auth modes
+
+### API-key auth
+
+Use `auth.type='api_key'` for APIs that expect a key in a header or query parameter:
+
+```python
+# header key (e.g. X-Api-Key, X-Auth-Token)
+'auth': {'type': 'api_key', 'in': 'header', 'name': 'X-Api-Key', 'value': 'my-key'}
+
+# query param
+'auth': {'type': 'api_key', 'in': 'query', 'name': 'api_key', 'value': 'my-key'}
+
+# dynamic key from state, with prefix
+'auth': {
+    'type': 'api_key', 'in': 'header', 'name': 'Authorization',
+    'value_callback': lambda config: config['api_key'], 'prefix': 'ApiKey ',
+}
+```
+
+### OAuth2 auth modes
 
 `rest_fetcher` supports two built-in OAuth2 styles:
 
@@ -189,6 +216,12 @@ before expiry using `expiry_margin` (default 60 seconds), and inject
 
 `oauth2_password` exists mainly for APIs such as GLPI v2 that want both client
 credentials and a real user identity for automated access.
+
+Both OAuth2 variants also accept three optional customization fields:
+
+- `client_auth_style` — `'body'` (default, credentials in form body) or `'basic'` (HTTP Basic for the token request)
+- `extra_token_params` — dict merged into the token request payload (e.g. `{'audience': 'https://api.example.com'}`)
+- `token_headers` — dict of headers applied only to the token request (e.g. `{'X-Tenant': 'acme'}`)
 
 ```python
 client = APIClient({
@@ -288,7 +321,8 @@ rest_fetcher/
 │   ├── context.py
 │   ├── events.py
 │   ├── exceptions.py
-│   ├── pagination.py        — CycleRunner engine; re-exports strategies for compat
+│   ├── _fetch_job.py        — _FetchJob per-call execution engine (internal)
+│   ├── pagination.py        — PaginationRunner engine; re-exports strategies for compat
 │   ├── strategies.py        — five built-in pagination helpers + path utilities
 │   ├── _run_state.py        — _RunState per-run execution state (internal)
 │   ├── parsing.py

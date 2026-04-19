@@ -1,6 +1,7 @@
 import logging
 import threading
 import time
+from typing import Any
 
 import requests
 
@@ -74,6 +75,9 @@ class _OAuth2BaseAuth(BaseAuth):
         self._scope = auth_config.get('scope')
         self._expiry_margin = auth_config.get('expiry_margin', 60)
         self._timeout = timeout
+        self._token_headers = auth_config.get('token_headers') or {}
+        self._extra_token_params = auth_config.get('extra_token_params') or {}
+        self._client_auth_style = auth_config.get('client_auth_style', 'body')
         self._token = None
         self._expires_at = 0
         self._lock = threading.Lock()
@@ -92,8 +96,20 @@ class _OAuth2BaseAuth(BaseAuth):
     def _fetch_token(self):
         logger.debug('fetching oauth2 token from %s', self._token_url)
         payload = self._build_payload()
+        if self._extra_token_params:
+            payload.update(self._extra_token_params)
+
+        kwargs: dict[str, Any] = {'data': payload, 'timeout': self._timeout}
+        if self._token_headers:
+            kwargs['headers'] = self._token_headers
+        if self._client_auth_style == 'basic':
+            # send client credentials via HTTP Basic; omit them from the form body
+            payload.pop('client_id', None)
+            payload.pop('client_secret', None)
+            kwargs['auth'] = (self._client_id, self._client_secret)
+
         try:
-            response = requests.post(self._token_url, data=payload, timeout=self._timeout)
+            response = requests.post(self._token_url, **kwargs)
             response.raise_for_status()
         except requests.RequestException as e:
             raise AuthError(f'oauth2 token request failed: {e}') from e
@@ -176,6 +192,44 @@ class OAuth2PasswordAuth(_OAuth2BaseAuth):
         return payload
 
 
+class ApiKeyAuth(BaseAuth):
+    """
+    injects an API key into a request header or query parameter.
+    supports static values and dynamic callbacks, with an optional prefix.
+
+    schema example (header, static):
+        'auth': {'type': 'api_key', 'in': 'header', 'name': 'X-Api-Key', 'value': 'my-key'}
+
+    schema example (query, callback):
+        'auth': {'type': 'api_key', 'in': 'query', 'name': 'api_key',
+                 'value_callback': lambda config: config['api_key']}
+
+    schema example (with prefix):
+        'auth': {'type': 'api_key', 'in': 'header', 'name': 'Authorization',
+                 'value': 'my-key', 'prefix': 'ApiKey '}
+    """
+
+    def __init__(self, auth_config, config_view=None):
+        self._location = auth_config['in']
+        self._name = auth_config['name']
+        self._value = auth_config.get('value')
+        self._value_callback = auth_config.get('value_callback')
+        self._prefix = auth_config.get('prefix') or ''
+        self._config_view = config_view
+
+    def apply(self, request_kwargs):
+        raw = self._value_callback(self._config_view) if self._value_callback else self._value
+        if not raw:
+            raise AuthError('api_key value is empty or None')
+        full_value = f'{self._prefix}{raw}'
+        if self._location == 'header':
+            headers = request_kwargs.get('headers', {}) | {self._name: full_value}
+            return request_kwargs | {'headers': headers}
+        else:
+            params = request_kwargs.get('params', {}) | {self._name: full_value}
+            return request_kwargs | {'params': params}
+
+
 class CallbackAuth(BaseAuth):
     """
     fully custom auth via user-supplied callable.
@@ -209,12 +263,14 @@ class CallbackAuth(BaseAuth):
 _AUTH_HANDLERS = {
     'bearer': BearerAuth,
     'basic': BasicAuth,
+    'api_key': ApiKeyAuth,
     'oauth2': OAuth2Auth,
     'oauth2_password': OAuth2PasswordAuth,
     'callback': CallbackAuth,
 }
 
 _OAUTH_TIMEOUT_HANDLERS = {OAuth2Auth, OAuth2PasswordAuth}
+_CONFIG_VIEW_HANDLERS = {BearerAuth, ApiKeyAuth, CallbackAuth}
 
 
 def build_auth_handler(auth_config, config_view=None, timeout=30):
@@ -234,6 +290,6 @@ def build_auth_handler(auth_config, config_view=None, timeout=30):
 
     if handler_cls in _OAUTH_TIMEOUT_HANDLERS:
         return handler_cls(auth_config, timeout=timeout)
-    if handler_cls in {BearerAuth, CallbackAuth}:
+    if handler_cls in _CONFIG_VIEW_HANDLERS:
         return handler_cls(auth_config, config_view=config_view)
     return handler_cls(auth_config)

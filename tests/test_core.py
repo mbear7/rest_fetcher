@@ -1612,7 +1612,7 @@ class TestRequestErrorContext(unittest.TestCase):
 
     def test_enrichment_is_idempotent(self):
         "if exception already has context set, _enrich_exc must not overwrite it"
-        from rest_fetcher.client import _enrich_exc
+        from rest_fetcher._fetch_job import _enrich_exc
 
         exc = RequestError('msg', endpoint='original', method='DELETE', url='http://x')
         _enrich_exc(exc, 'other', 'GET', 'http://y')
@@ -3090,7 +3090,7 @@ class TestPathParams(unittest.TestCase):
 
 class TestHeaderScrubbing(unittest.TestCase):
     def setUp(self):
-        from rest_fetcher.client import _scrub
+        from rest_fetcher.playback import _scrub
 
         self.scrub = _scrub
 
@@ -3141,7 +3141,7 @@ class TestHeaderScrubbing(unittest.TestCase):
             validate({**simple_schema(), 'scrub_headers': 'X-Token'})  # string not list
 
     def test_scrub_recorded_url_redacts_builtin_query_params(self):
-        from rest_fetcher.client import _scrub_recorded_url
+        from rest_fetcher.playback import _scrub_recorded_url
 
         url = 'https://api.example.com/items?access_token=abc123&limit=100'
         result = _scrub_recorded_url(url)
@@ -3149,7 +3149,7 @@ class TestHeaderScrubbing(unittest.TestCase):
         self.assertIn('limit=100', result)
 
     def test_scrub_recorded_url_redacts_by_pattern(self):
-        from rest_fetcher.client import _scrub_recorded_url
+        from rest_fetcher.playback import _scrub_recorded_url
 
         url = 'https://api.example.com/items?my_auth_token=abc123&page=2'
         result = _scrub_recorded_url(url)
@@ -3157,7 +3157,7 @@ class TestHeaderScrubbing(unittest.TestCase):
         self.assertIn('page=2', result)
 
     def test_scrub_recorded_url_redacts_user_extensions(self):
-        from rest_fetcher.client import _scrub_recorded_url
+        from rest_fetcher.playback import _scrub_recorded_url
 
         url = 'https://api.example.com/items?tenant_token=abc123&page=2'
         result = _scrub_recorded_url(url, extra_scrub=['tenant_token'])
@@ -3165,7 +3165,7 @@ class TestHeaderScrubbing(unittest.TestCase):
         self.assertIn('page=2', result)
 
     def test_scrub_recorded_url_does_not_redact_generic_code_by_default(self):
-        from rest_fetcher.client import _scrub_recorded_url
+        from rest_fetcher.playback import _scrub_recorded_url
 
         url = 'https://api.example.com/items?code=US&page=2'
         result = _scrub_recorded_url(url)
@@ -3173,7 +3173,7 @@ class TestHeaderScrubbing(unittest.TestCase):
         self.assertIn('page=2', result)
 
     def test_scrub_recorded_url_can_redact_code_via_extension(self):
-        from rest_fetcher.client import _scrub_recorded_url
+        from rest_fetcher.playback import _scrub_recorded_url
 
         url = 'https://api.example.com/items?code=secret123&page=2'
         result = _scrub_recorded_url(url, extra_scrub=['code'])
@@ -3523,14 +3523,14 @@ class TestNonPaginatedCallbackPromotion(unittest.TestCase):
         self.assertGreaterEqual(seen[2], 0.0)
 
     def test_run_state_build_summary_elapsed_is_non_negative(self):
-        from rest_fetcher.client import _RunState
+        from rest_fetcher._run_state import _RunState
 
         run_state = _RunState(endpoint_name='ep', event_source='live')
         summary = run_state.build_summary()
         self.assertGreaterEqual(summary.elapsed_seconds, 0.0)
 
     def test_mark_wait_rejects_unknown_wait_type(self):
-        from rest_fetcher.client import _RunState
+        from rest_fetcher._run_state import _RunState
 
         run_state = _RunState()
         with self.assertRaises(ValueError):
@@ -4825,7 +4825,7 @@ class TestOperationContext(unittest.TestCase):
     def test_elapsed_uses_monotonic(self):
         import time
 
-        from rest_fetcher.client import _RunState
+        from rest_fetcher._run_state import _RunState
 
         run_state = _RunState()
         before = time.monotonic()
@@ -6176,7 +6176,7 @@ class TestOnPageComplete(unittest.TestCase):
 
         with (
             patch.object(client._session, 'request', return_value=response),
-            patch('rest_fetcher.client.time.monotonic', side_effect=fake_monotonic),
+            patch('rest_fetcher._fetch_job.time.monotonic', side_effect=fake_monotonic),
         ):
             client.fetch('ep')
 
@@ -6255,7 +6255,7 @@ class TestOnPageComplete(unittest.TestCase):
         with (
             patch.object(client._session, 'request', side_effect=mock_request),
             patch('rest_fetcher.retry.time.sleep', side_effect=fake_sleep),
-            patch('rest_fetcher.client.time.monotonic', side_effect=fake_monotonic),
+            patch('rest_fetcher._fetch_job.time.monotonic', side_effect=fake_monotonic),
         ):
             client.fetch('ep')
 
@@ -6833,6 +6833,127 @@ class TestB5MetricsSession(unittest.TestCase):
         self.assertEqual(snap.total_requests, 1)
         self.assertEqual(snap.total_pages, 0)
 
+    def test_by_endpoint_single_endpoint(self):
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'metrics': True,
+                'endpoints': {'ep': {'method': 'GET', 'path': '/x', 'mock': [{'items': [1, 2]}]}},
+            }
+        )
+        client.fetch('ep')
+        snap = client.metrics.summary()
+        self.assertEqual(list(snap.by_endpoint.keys()), ['ep'])
+        em = snap.by_endpoint['ep']
+        self.assertEqual(em.runs, 1)
+        self.assertEqual(em.failed_runs, 0)
+        self.assertEqual(em.requests, snap.total_requests)
+        self.assertEqual(em.pages, snap.total_pages)
+
+    def test_by_endpoint_multiple_endpoints(self):
+        session = MetricsSession()
+        client_a = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'metrics': session,
+                'endpoints': {'alpha': {'method': 'GET', 'path': '/a', 'mock': [{'items': [1]}]}},
+            }
+        )
+        client_b = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'metrics': session,
+                'endpoints': {
+                    'beta': {
+                        'method': 'GET',
+                        'path': '/b',
+                        'mock': [
+                            {'items': [1], 'next_cursor': 'n1'},
+                            {'items': [2], 'next_cursor': None},
+                        ],
+                        'pagination': cursor_pagination(
+                            cursor_param='cursor', next_cursor_path='next_cursor', data_path='items'
+                        ),
+                    }
+                },
+            }
+        )
+        client_a.fetch('alpha')
+        client_b.fetch('beta')
+        snap = session.summary()
+        self.assertIn('alpha', snap.by_endpoint)
+        self.assertIn('beta', snap.by_endpoint)
+        self.assertEqual(len(snap.by_endpoint), 2)
+        self.assertEqual(snap.by_endpoint['alpha'].requests, 1)
+        self.assertEqual(snap.by_endpoint['beta'].requests, 2)
+        self.assertEqual(snap.by_endpoint['alpha'].pages, 1)
+        self.assertEqual(snap.by_endpoint['beta'].pages, 2)
+
+    def test_by_endpoint_sum_equals_totals(self):
+        session = MetricsSession()
+        for name, path in [('ep1', '/x'), ('ep2', '/y'), ('ep1', '/x')]:
+            client = APIClient(
+                {
+                    'base_url': 'https://api.example.com/v1',
+                    'metrics': session,
+                    'endpoints': {name: {'method': 'GET', 'path': path, 'mock': [{'items': [1]}]}},
+                }
+            )
+            client.fetch(name)
+        snap = session.summary()
+        self.assertEqual(sum(em.runs for em in snap.by_endpoint.values()), snap.total_runs)
+        self.assertEqual(sum(em.requests for em in snap.by_endpoint.values()), snap.total_requests)
+        self.assertEqual(sum(em.pages for em in snap.by_endpoint.values()), snap.total_pages)
+        self.assertEqual(sum(em.retries for em in snap.by_endpoint.values()), snap.total_retries)
+
+    def test_by_endpoint_none_uses_unknown_sentinel(self):
+        from rest_fetcher.metrics import _UNKNOWN_ENDPOINT
+        from rest_fetcher.types import StreamSummary
+
+        session = MetricsSession()
+        session._record(StreamSummary(pages=1, requests=2, endpoint=None), failed=False)
+        snap = session.summary()
+        self.assertIn(_UNKNOWN_ENDPOINT, snap.by_endpoint)
+        self.assertEqual(snap.by_endpoint[_UNKNOWN_ENDPOINT].requests, 2)
+        self.assertEqual(snap.total_requests, 2)
+
+    def test_by_endpoint_failed_run(self):
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'metrics': True,
+                'endpoints': {
+                    'ep': {
+                        'method': 'GET',
+                        'path': '/x',
+                        'mock': [{'items': [1]}],
+                        'on_complete': lambda summary, state: raise_(RuntimeError('boom')),
+                    }
+                },
+            }
+        )
+        with self.assertRaises(CallbackError):
+            list(client.stream('ep'))
+        snap = client.metrics.summary()
+        self.assertEqual(snap.by_endpoint['ep'].failed_runs, 1)
+        self.assertEqual(snap.by_endpoint['ep'].runs, 1)
+
+    def test_reset_clears_by_endpoint(self):
+        client = APIClient(
+            {
+                'base_url': 'https://api.example.com/v1',
+                'metrics': True,
+                'endpoints': {'ep': {'method': 'GET', 'path': '/x', 'mock': [{'items': [1]}]}},
+            }
+        )
+        client.fetch('ep')
+        flushed = client.metrics.reset()
+        self.assertIn('ep', flushed.by_endpoint)
+        self.assertEqual(client.metrics.summary().by_endpoint, {})
+
+    def test_default_metrics_summary_equality(self):
+        self.assertEqual(MetricsSummary(), MetricsSummary())
+
 
 class TestOptionalTypingSurface(unittest.TestCase):
     def test_schema_typeddicts_track_runtime_config_keys(self):
@@ -6865,7 +6986,7 @@ class TestOptionalTypingSurface(unittest.TestCase):
 
 class TestErrorRaiseSemantics(unittest.TestCase):
     def _job(self) -> object:
-        from rest_fetcher.client import _FetchJob
+        from rest_fetcher._fetch_job import _FetchJob
 
         client = APIClient(simple_schema())
         return _FetchJob(
@@ -6890,7 +7011,7 @@ class TestErrorRaiseSemantics(unittest.TestCase):
         self.assertIn('http 503', str(ctx.exception))
 
     def test_handle_request_cycle_error_raise_preserves_original_traceback_site(self):
-        from rest_fetcher.client import _RunState
+        from rest_fetcher._run_state import _RunState
 
         job = self._job()
         run_state = _RunState(endpoint_name='test', event_source='live')

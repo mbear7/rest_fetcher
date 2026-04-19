@@ -163,7 +163,8 @@ class StreamRun(Protocol, Iterator[StreamItem]):
     read run.summary once iteration completes normally.
     """
 
-    summary: StreamSummary | None
+    @property
+    def summary(self) -> StreamSummary | None: ...
 
     def __next__(self) -> StreamItem: ...
 
@@ -188,6 +189,9 @@ class OAuth2AuthConfig(TypedDict, total=False):
     client_secret: str  # required at runtime
     scope: str
     expiry_margin: int
+    token_headers: dict[str, str]
+    extra_token_params: dict[str, Any]
+    client_auth_style: Literal['body', 'basic']
 
 
 class OAuth2PasswordAuthConfig(TypedDict, total=False):
@@ -199,6 +203,18 @@ class OAuth2PasswordAuthConfig(TypedDict, total=False):
     password: str  # required at runtime
     scope: str
     expiry_margin: int
+    token_headers: dict[str, str]
+    extra_token_params: dict[str, Any]
+    client_auth_style: Literal['body', 'basic']
+
+
+class ApiKeyAuthConfig(TypedDict, total=False):
+    type: str  # 'api_key' (required at runtime)
+    in_: str  # 'header' or 'query' — note: schema key is 'in', not 'in_'
+    name: str  # required at runtime: header or query param name
+    value: str
+    value_callback: TokenCallbackFn
+    prefix: str
 
 
 class CallbackAuthConfig(TypedDict, total=False):
@@ -209,6 +225,7 @@ class CallbackAuthConfig(TypedDict, total=False):
 AuthConfig = (
     BearerAuthConfig
     | BasicAuthConfig
+    | ApiKeyAuthConfig
     | OAuth2AuthConfig
     | OAuth2PasswordAuthConfig
     | CallbackAuthConfig
@@ -383,6 +400,9 @@ class SchemaBuilder:
         client_secret: str,
         scope: str | None = None,
         expiry_margin: int = 60,
+        client_auth_style: str = 'body',
+        extra_token_params: dict | None = None,
+        token_headers: dict | None = None,
     ) -> SchemaBuilder:
         cfg: dict = {
             'type': 'oauth2',
@@ -390,9 +410,14 @@ class SchemaBuilder:
             'client_id': client_id,
             'client_secret': client_secret,
             'expiry_margin': expiry_margin,
+            'client_auth_style': client_auth_style,
         }
         if scope:
             cfg['scope'] = scope
+        if extra_token_params:
+            cfg['extra_token_params'] = extra_token_params
+        if token_headers:
+            cfg['token_headers'] = token_headers
         self._schema['auth'] = cfg
         return self
 
@@ -405,6 +430,9 @@ class SchemaBuilder:
         password: str,
         scope: str | None = None,
         expiry_margin: int = 60,
+        client_auth_style: str = 'body',
+        extra_token_params: dict | None = None,
+        token_headers: dict | None = None,
     ) -> SchemaBuilder:
         cfg: dict = {
             'type': 'oauth2_password',
@@ -414,9 +442,41 @@ class SchemaBuilder:
             'username': username,
             'password': password,
             'expiry_margin': expiry_margin,
+            'client_auth_style': client_auth_style,
         }
         if scope:
             cfg['scope'] = scope
+        if extra_token_params:
+            cfg['extra_token_params'] = extra_token_params
+        if token_headers:
+            cfg['token_headers'] = token_headers
+        self._schema['auth'] = cfg
+        return self
+
+    def api_key(
+        self,
+        name: str,
+        value: str | None = None,
+        *,
+        in_: str = 'header',
+        prefix: str | None = None,
+        value_callback: TokenCallbackFn | None = None,
+    ) -> SchemaBuilder:
+        """
+        inject an API key into a header or query parameter.
+        name: header name (e.g. 'X-Api-Key') or query param name (e.g. 'api_key').
+        in_: 'header' (default) or 'query'.
+        value: static key string.
+        value_callback: callable(config) -> str for dynamic keys.
+        prefix: optional string prepended to the resolved value (e.g. 'ApiKey ').
+        """
+        cfg: dict = {'type': 'api_key', 'in': in_, 'name': name}
+        if value is not None:
+            cfg['value'] = value
+        if value_callback is not None:
+            cfg['value_callback'] = value_callback
+        if prefix is not None:
+            cfg['prefix'] = prefix
         self._schema['auth'] = cfg
         return self
 

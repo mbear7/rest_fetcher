@@ -12,6 +12,7 @@ rest_fetcher usage examples
 
 covers:
   1.  simple GET, bearer auth
+  1a. api_key auth — header and query variants
   2.  paginated GET, cursor strategy
   3.  POST with body, client-level pagination defaults
   4.  call-time param overrides
@@ -108,6 +109,52 @@ client = APIClient(
 
 profile = client.fetch('whoami')
 # returns a dict: {'id': 123, 'name': 'Alice', ...}
+
+
+# example 1a: api_key auth — inject a key into a header or query param
+# use this instead of callback auth for APIs that expect a fixed-name key field.
+# 'value' and 'value_callback' are mutually exclusive.
+
+# header variant (X-Api-Key, X-Auth-Token, or any custom header name)
+client = APIClient(
+    {
+        'base_url': 'https://api.example.com/v1',
+        'auth': {'type': 'api_key', 'in': 'header', 'name': 'X-Api-Key', 'value': 'my-key'},
+        'endpoints': {'status': {'path': '/status'}},
+    }
+)
+
+# query-param variant (e.g. ?api_key=my-key)
+client = APIClient(
+    {
+        'base_url': 'https://api.example.com/v1',
+        'auth': {'type': 'api_key', 'in': 'query', 'name': 'api_key', 'value': 'my-key'},
+        'endpoints': {'status': {'path': '/status'}},
+    }
+)
+
+# dynamic key via value_callback — receives the state/config view passed to .state(...)
+client = APIClient(
+    {
+        'base_url': 'https://api.example.com/v1',
+        'auth': {
+            'type': 'api_key',
+            'in': 'header',
+            'name': 'X-Api-Key',
+            'value_callback': lambda config: config['api_key'],
+        },
+        'state': {'api_key': 'my-key'},
+        'endpoints': {'status': {'path': '/status'}},
+    }
+)
+
+# SchemaBuilder equivalent
+client = APIClient(
+    SchemaBuilder('https://api.example.com/v1')
+    .api_key('X-Api-Key', 'my-key')
+    .endpoint('status', path='/status')
+    .build()
+)
 
 
 # example 2: paginated GET using built-in cursor strategy
@@ -880,6 +927,26 @@ client = APIClient(
 )
 
 records = client.fetch('records')
+
+# advanced: some token endpoints require credentials via HTTP Basic rather than
+# the default request-body style, or accept extra parameters / custom headers.
+# client_auth_style='basic' is the fix when a server returns 401 on the token
+# request despite correct credentials.
+client = APIClient(
+    {
+        'base_url': 'https://api.example.com/v1',
+        'auth': {
+            'type': 'oauth2',
+            'token_url': 'https://auth.example.com/oauth/token',
+            'client_id': 'my-client-id',
+            'client_secret': 'my-client-secret',
+            'client_auth_style': 'basic',  # send credentials as HTTP Basic
+            'extra_token_params': {'audience': 'https://api.example.com'},
+            'token_headers': {'Accept': 'application/json'},
+        },
+        'endpoints': {'records': {'method': 'GET', 'path': '/records'}},
+    }
+)
 
 # SchemaBuilder equivalent
 schema = (

@@ -369,9 +369,9 @@ offset_pagination(total_path='pages.0.total', path_resolver=my_resolver)
 There are two separate state scopes that exist simultaneously during a
 paginated run:
 
-**schema['state']** is one source consumed in two separate ways. Auth reads it as read-only config. Each `CycleRunner.run()` call also receives a copied seed from it and uses that to initialize run-local `page_state`.
+**schema['state']** is one source consumed in two separate ways. Auth reads it as read-only config. Each `PaginationRunner.run()` call also receives a copied seed from it and uses that to initialize run-local `page_state`.
 
-**page_state** — created fresh per `CycleRunner.run()` call. Tracks pagination counters (`offset`, `page`, `cursor`, etc.), `_response_headers`, `_request`, and clean bounded-stop metadata. Discarded when the run completes.
+**page_state** — created fresh per `PaginationRunner.run()` call. Tracks pagination counters (`offset`, `page`, `cursor`, etc.), `_response_headers`, `_request`, and clean bounded-stop metadata. Discarded when the run completes.
 
 Pagination callbacks receive a **`StateView`** of run-local `page_state` only.
 
@@ -882,7 +882,7 @@ apply to local file reads, which are deterministic and effectively immediate.
 | `save` | Yes — fetches + overwrites | Yes |
 
 The raw-response replay path still skips cap checks: playback does not call the
-live `OperationContext` guards, and `CycleRunner.run()` is invoked without
+live `OperationContext` guards, and `PaginationRunner.run()` is invoked without
 a live context in replay mode.
 
 **Testing cap behaviour without a live API:** use a callable `mock` instead of

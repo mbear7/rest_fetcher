@@ -52,7 +52,7 @@ class _RunState:
         self._last_error = None
         self._last_error_action = None
 
-    def record_attempt_elapsed(self, elapsed_ms: float | None, *, now: float | None = None) -> None:
+    def record_attempt_elapsed(self, *, now: float | None = None) -> None:
         if now is not None:
             self._page_cycle_last_response_mono = now
 
@@ -152,7 +152,7 @@ class _RunState:
         retry_bytes_received: int = 0,
         now: float | None = None,
     ) -> dict[str, Any]:
-        self.record_attempt_elapsed(elapsed_ms, now=now)
+        self.record_attempt_elapsed(now=now)
         return {
             'status_code': status_code,
             'elapsed_ms': elapsed_ms,
