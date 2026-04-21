@@ -101,6 +101,22 @@ Intentional mode differences
    - Valid values are `live` and `playback`.
    - Invalid internal values should fail loudly.
 
+Deliberate non-features
+-----------------------
+
+**Request bytes (outbound) are not tracked, and should not be added without a clear reason to revisit.**
+
+The library tracks response bytes (`bytes_received`, `retry_bytes_received`) because response body size is a meaningful, unambiguous measure of data ingested — directly observable from `len(response.content)`, consistently defined across retry and pagination boundaries.
+
+Outbound request bytes have none of these properties:
+
+- **The measurement point is wrong.** `requests` does not expose wire-level outbound bytes. Any approximation from the serialised request body misses headers, URL length, and HTTP framing — the number would be a partial estimate, not an actual measure.
+- **Auth injection complicates attribution.** Auth headers are added late in the pipeline, after request assembly. Measuring before auth injection undercounts; measuring after includes credential material that is deliberately scrubbed from event payloads elsewhere.
+- **The value is poor for typical workloads.** Most pagination workloads are GET-heavy. Outbound "bytes" for GET requests are dominated by auth headers and small param strings. A number that reads ~500 bytes per request regardless of what the API does is not informative.
+- **Retry attribution is ambiguous.** Should a retried request's body be counted once (per logical request) or per attempt? Neither answer is obviously correct, and the semantics do not mirror those of `retry_bytes_received`, which tracks inbound bytes on retry attempts.
+
+If this is revisited: measure post-auth from the prepared request, document explicitly that the result is a body-and-params approximation and not a wire-level byte count, and model retry attribution explicitly against `retry_bytes_received` semantics.
+
 Execution-mode contracts
 ------------------------
 

@@ -1025,6 +1025,8 @@ Key timing and volume semantics:
 - `bytes_received_so_far` accumulates `len(response.content)` for each response processed by the library, including error responses with a body; playback measures fixture-reconstructed content
 - `retry_bytes_received_so_far` accumulates the same body-byte measure, but only for retry attempts in the current run. The initial attempt that triggered retry does not count; attempts 2+ in the same page cycle do. If no retries happen, the value remains `0`.
 
+Only inbound (response) bytes are tracked. Outbound request bytes are intentionally absent — see the contributor contract map for the reasoning.
+
 ### Event enrichment
 
 Existing lifecycle events are enriched in place rather than replaced with a new
