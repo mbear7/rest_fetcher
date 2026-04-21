@@ -8,11 +8,8 @@ from typing import Any
 
 import requests
 
-from ._fetch_job import (
-    _LOG_LEVELS,
-    _FetchJob,
-    _has_token_bucket_config,
-)
+from ._fetch_job import _FetchJob
+from ._job_config import _LOG_LEVELS, _has_token_bucket_config
 from .auth import build_auth_handler
 from .exceptions import SchemaError
 from .metrics import MetricsSession

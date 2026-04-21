@@ -14,7 +14,7 @@ OnLimit = Literal['wait', 'raise']
 
 
 @dataclass
-class RateLimitConfig:
+class _TokenBucketConfig:
     strategy: Literal['token_bucket']
     requests_per_second: float
     burst: int
@@ -70,7 +70,7 @@ class TokenBucket:
         self._sleep(seconds)
 
 
-def build_token_bucket(cfg: dict[str, Any]) -> RateLimitConfig:
+def build_token_bucket(cfg: dict[str, Any]) -> _TokenBucketConfig:
     if cfg is None:
         raise SchemaError('rate_limit config must not be None here')
 
@@ -102,7 +102,7 @@ def build_token_bucket(cfg: dict[str, Any]) -> RateLimitConfig:
     if sleep is not None and not callable(sleep):
         raise SchemaError('rate_limit.sleep must be callable if provided')
 
-    return RateLimitConfig(
+    return _TokenBucketConfig(
         strategy='token_bucket',
         requests_per_second=float(rps),
         burst=int(burst),

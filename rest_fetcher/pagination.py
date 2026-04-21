@@ -14,11 +14,11 @@ from .strategies import (
     PathLike,
     PathPart,
     PathResolver,
-    _normalize_path,
-    _parse_link_next,
-    _resolve_path,
-    _safe_int,
-    _safe_items,
+    _normalize_path,  # noqa: F401 — re-exported; tests and helpers import from here
+    _parse_link_next,  # noqa: F401
+    _resolve_path,  # noqa: F401
+    _safe_int,  # noqa: F401
+    _safe_items,  # noqa: F401
     cursor_pagination,
     link_header_pagination,
     offset_pagination,
@@ -43,15 +43,10 @@ __all__ = [
     'offset_pagination',
     'page_number_pagination',
     'url_header_pagination',
-    # path utilities (used by tests and custom pagination helpers)
+    # path type utilities
     'PathLike',
     'PathPart',
     'PathResolver',
-    '_normalize_path',
-    '_parse_link_next',
-    '_resolve_path',
-    '_safe_int',
-    '_safe_items',
 ]
 
 logger = logging.getLogger('rest_fetcher.pagination')
